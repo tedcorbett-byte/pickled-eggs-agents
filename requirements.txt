@@ -1,0 +1,15 @@
+# Core
+anthropic>=0.40.0
+flask>=3.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Reddit (Community Listener)
+praw>=7.7.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Database
+# sqlite3 is built-in — no install needed for local dev
+psycopg2-binary>=2.9.0  # Postgres for Railway deployment
