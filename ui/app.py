@@ -312,6 +312,7 @@ def api_action():
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    from shared.config import FLASK_PORT
-    print(f"\nReview Dashboard running at http://localhost:{FLASK_PORT}")
-    app.run(port=FLASK_PORT, debug=False)
+    import os
+    port = int(os.environ.get("PORT", 5050))
+    print(f"\nReview Dashboard running at http://localhost:{port}")
+    app.run(host="0.0.0.0", port=port, debug=False)

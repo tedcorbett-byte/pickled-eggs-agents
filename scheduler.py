@@ -40,10 +40,11 @@ def run_all():
 
 
 def launch_ui():
-    from shared.config import FLASK_PORT
+    import os
     from ui.app import app
-    print(f"\nReview Dashboard: http://localhost:{FLASK_PORT}")
-    app.run(port=FLASK_PORT, debug=False)
+    port = int(os.environ.get("PORT", 5050))
+    print(f"\nReview Dashboard: http://localhost:{port}")
+    app.run(host="0.0.0.0", port=port, debug=False)
 
 
 def main():
