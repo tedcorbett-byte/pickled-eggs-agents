@@ -33,3 +33,6 @@ ENV/
 
 # Railway / deployment artifacts
 .railway/
+
+# One-time utility scripts
+get_shopify_token.py
