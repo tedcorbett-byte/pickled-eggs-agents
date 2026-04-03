@@ -14,12 +14,14 @@ import argparse
 import time
 from datetime import datetime, timezone
 
-import praw
+import requests
 
 from shared.bars import BARS, SUBREDDITS, TRIGGER_PHRASES, BARS_SUMMARY, bar_url_for
 from shared.claude_client import complete_json
-from shared.config import REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT, MIN_RELEVANCE_SCORE
+from shared.config import REDDIT_USER_AGENT, MIN_RELEVANCE_SCORE
 from shared.db import get_conn, execute, fetchone
+
+REDDIT_HEADERS = {"User-Agent": REDDIT_USER_AGENT or "PickledEggsCo-Listener/1.0"}
 
 
 # ─────────────────────────────────────────────
@@ -157,43 +159,51 @@ def scan_reddit(limit_per_sub: int = 100):
 
     init_db()
 
-    reddit = praw.Reddit(
-        client_id=REDDIT_CLIENT_ID or "placeholder",
-        client_secret=REDDIT_CLIENT_SECRET or "placeholder",
-        user_agent=REDDIT_USER_AGENT or "PickledEggsCo-Listener/1.0",
-        read_only=True,
-    )
-
     found = 0
     queued = 0
 
     for sub_name in SUBREDDITS:
         print(f"\n  r/{sub_name} ...", end=" ", flush=True)
         try:
-            sub = reddit.subreddit(sub_name)
+            url = f"https://www.reddit.com/r/{sub_name}/new.json?limit={limit_per_sub}"
+            response = requests.get(url, headers=REDDIT_HEADERS, timeout=10)
+
+            if response.status_code != 200:
+                print(f"error: HTTP {response.status_code}")
+                time.sleep(2)
+                continue
+
+            posts = response.json().get("data", {}).get("children", [])
             posts_checked = 0
 
-            for submission in sub.new(limit=limit_per_sub):
+            for child in posts:
+                post = child.get("data", {})
                 posts_checked += 1
-                full_text = f"{submission.title} {submission.selftext}"
+                full_text = f"{post.get('title', '')} {post.get('selftext', '')}"
                 matched_bars, matched_triggers = find_matches(full_text)
 
                 if not matched_bars and not matched_triggers:
                     continue
 
                 found += 1
-                post_id = f"reddit_{submission.id}"
+                post_id = f"reddit_{post['id']}"
 
                 if post_exists(post_id):
                     continue
 
-                print(f"\n    Found: {submission.title[:60]}...")
+                title = post.get("title", "")
+                body = post.get("selftext", "")
+                permalink = post.get("permalink", "")
+                author = post.get("author", "[deleted]")
+                created_utc = post.get("created_utc", 0)
+
+                print(f"\n    Found: {title[:60]}...")
                 result = score_and_draft(
-                    post_title=submission.title,
-                    post_body=submission.selftext,
+                    post_title=title,
+                    post_body=body,
                     matched_bars=matched_bars,
                     matched_triggers=matched_triggers,
-                    post_url=f"https://reddit.com{submission.permalink}",
+                    post_url=f"https://reddit.com{permalink}",
                 )
 
                 score = result.get("score", 0)
@@ -205,12 +215,12 @@ def scan_reddit(limit_per_sub: int = 100):
                         "id": post_id,
                         "platform": "reddit",
                         "subreddit": sub_name,
-                        "title": submission.title,
-                        "body": submission.selftext[:2000],
-                        "url": f"https://reddit.com{submission.permalink}",
-                        "author": str(submission.author),
+                        "title": title,
+                        "body": body[:2000],
+                        "url": f"https://reddit.com{permalink}",
+                        "author": author,
                         "created_at": datetime.fromtimestamp(
-                            submission.created_utc, tz=timezone.utc
+                            created_utc, tz=timezone.utc
                         ).isoformat(),
                         "matched_bar": ", ".join(matched_bars),
                         "matched_triggers": ", ".join(matched_triggers),
@@ -220,12 +230,12 @@ def scan_reddit(limit_per_sub: int = 100):
                         "scanned_at": datetime.now().isoformat(),
                     })
 
-                time.sleep(0.5)
-
             print(f"checked {posts_checked} posts")
+            time.sleep(2)  # Stay within Reddit's unauthenticated rate limit
 
         except Exception as e:
             print(f"error: {e}")
+            time.sleep(2)
 
     print(f"\nDone. Found {found} candidate posts, queued {queued} for review.")
     return queued
