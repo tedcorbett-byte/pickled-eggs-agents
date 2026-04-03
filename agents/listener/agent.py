@@ -98,11 +98,18 @@ def score_and_draft(post_title, post_body, matched_bars, matched_triggers, post_
         bars_context = f"\nMatched bars (we have shirts for these):\n{urls}"
 
     prompt = f"""You are helping Pickled Eggs Co (pickledeggsco.com) find Reddit conversations
-where their products are genuinely relevant. Pickled Eggs Co makes graphic t-shirts that
-memorialize specific closed bars — dive bars, gay bars, neighborhood taverns — across
-Seattle and Denver. Founded by two brothers, Ted and Andy Corbett.
+where their products are genuinely relevant.
 
-Their bars:
+About Pickled Eggs Co:
+Pickled Eggs Co is an American apparel brand that preserves and reimagines the culture of
+defunct dive bars — the neighborhood taverns, working-class watering holes, and forgotten
+local institutions that shaped American social life. Founded by two brothers, Ted and Andy
+Corbett, raised in Denver and living in Seattle. The brand produces graphic t-shirts that
+honor specific closed bars, their regulars, and the broader culture of unpretentious drinking
+in America. Pickled Eggs Co operates at the intersection of cultural preservation, nostalgia,
+and wearable storytelling — offering a tangible connection to places that exist now only in memory.
+
+Their bars (with histories):
 {BARS_SUMMARY}
 
 Reddit post to evaluate:
@@ -113,13 +120,13 @@ Matched trigger phrases: {', '.join(matched_triggers) if matched_triggers else '
 
 Task 1 — Score relevance 0-10:
 - 9-10: Post directly mentions one of our bars OR is asking for exactly the kind of gift we sell
-- 7-8: Strong dive bar / closed bar nostalgia, or Seattle/Denver bar mourning, high purchase intent
+- 7-8: Strong dive bar / closed bar nostalgia, or mourning a specific closed bar, high purchase intent
 - 5-6: General nostalgia or bar culture, loosely relevant
 - 0-4: Not relevant, or would feel forced/spammy to reply
 
 Task 2 — If score >= 6, draft a reply (max 120 words):
 - Sound like a genuine person who also cares about this stuff, not a brand
-- Reference the specific bar or feeling they mentioned
+- Reference the specific bar's history or the feeling they mentioned — use the bar descriptions above
 - Mention Pickled Eggs Co naturally, not as an ad
 - Include the product URL only if a specific bar matches — otherwise link to pickledeggsco.com
 - Never say "I work for" or "I'm the owner" — just "we make shirts" or "there's a brand called Pickled Eggs Co"
