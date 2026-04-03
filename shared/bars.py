@@ -32,7 +32,7 @@ BARS = [
     # Rosemead, CA
     {"name": "Bahooka",                          "city": "Rosemead",   "state": "CA", "url": "https://pickledeggsco.com/products/copy-of-bahooka-rosemead-ca"},
     # Arlington, VA
-    {"name": "Bardo Rodeo",                      "city": "Arlington",  "state": "VA", "url": "https://pickledeggsco.com/products/bardo-rodeo-arlington"},
+    {"name": "Bardo Rodeo",                      "city": "Arlington",  "state": "VA", "url": "https://pickledeggsco.com/products/bahooka-rosemead-ca"},
     # Hanover, NH
     {"name": "Everything But Anchovies",         "city": "Hanover",    "state": "NH", "url": "https://pickledeggsco.com/products/everything-but-anchovies-hanover"},
     # Cincinnati, OH
