@@ -158,9 +158,10 @@ def scan_reddit(limit_per_sub: int = 100):
     init_db()
 
     reddit = praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_CLIENT_SECRET,
-        user_agent=REDDIT_USER_AGENT,
+        client_id=REDDIT_CLIENT_ID or "placeholder",
+        client_secret=REDDIT_CLIENT_SECRET or "placeholder",
+        user_agent=REDDIT_USER_AGENT or "PickledEggsCo-Listener/1.0",
+        read_only=True,
     )
 
     found = 0
