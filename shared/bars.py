@@ -102,10 +102,16 @@ SUBREDDITS = [
     "nova", "arlington",
     # New Hampshire (Everything But Anchovies)
     "NewHampshire", "Dartmouth",
+    # Tiki (Bahooka)
+    "Tiki", "TikiBar",
+    # Dartmouth (Everything But Anchovies)
+    "Dartmouth",
+    # Harvard Square (The Tasty)
+    "Harvard",
     # General bar / nostalgia / LGBTQ
     "gaybars", "divebars", "nostalgia", "Bars", "BarCulture",
     "LGBTQ", "LGBT", "gay", "LGBTHistory",
-    "whatisthisplace",
+    "whatisthisplace", "mildlynostalgia", "AskNYC", "BeerCulture",
 ]
 
 TRIGGER_PHRASES = [
