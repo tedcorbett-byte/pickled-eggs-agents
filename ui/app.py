@@ -19,6 +19,65 @@ from shared.db import execute, fetchall, fetchone, get_conn
 
 app = Flask(__name__)
 
+
+# ─────────────────────────────────────────────
+# ENSURE TABLES EXIST ON STARTUP
+# ─────────────────────────────────────────────
+
+def init_all_tables():
+    """Create all agent tables if they don't exist yet.
+    Called once at web startup so the dashboard never crashes on missing tables."""
+    from shared.db import get_conn, execute
+    with get_conn() as conn:
+        execute(conn, """
+            CREATE TABLE IF NOT EXISTS posts (
+                id TEXT PRIMARY KEY,
+                platform TEXT,
+                subreddit TEXT,
+                title TEXT,
+                body TEXT,
+                url TEXT,
+                author TEXT,
+                created_at TEXT,
+                matched_bar TEXT,
+                matched_triggers TEXT,
+                relevance_score INTEGER,
+                relevance_reason TEXT,
+                draft_reply TEXT,
+                status TEXT DEFAULT 'pending',
+                reviewed_at TEXT,
+                scanned_at TEXT
+            )
+        """)
+        execute(conn, """
+            CREATE TABLE IF NOT EXISTS content_drafts (
+                id TEXT PRIMARY KEY,
+                bar_name TEXT NOT NULL,
+                bar_city TEXT,
+                content_type TEXT NOT NULL,
+                draft TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TEXT,
+                reviewed_at TEXT
+            )
+        """)
+        execute(conn, """
+            CREATE TABLE IF NOT EXISTS freshness_queue (
+                id TEXT PRIMARY KEY,
+                shopify_product_id TEXT NOT NULL,
+                product_title TEXT,
+                product_url TEXT,
+                old_description TEXT,
+                new_description TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at TEXT,
+                reviewed_at TEXT
+            )
+        """)
+
+
+init_all_tables()
+
 # ─────────────────────────────────────────────
 # SHARED DASHBOARD HTML
 # ─────────────────────────────────────────────
