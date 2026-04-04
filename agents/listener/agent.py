@@ -29,8 +29,27 @@ REDDIT_HEADERS = {"User-Agent": REDDIT_USER_AGENT or "PickledEggsCo-Listener/1.0
 ARCTIC_BASE   = "https://arctic-shift.photon-reddit.com/api/posts/search"
 ARCTIC_FIELDS = "id,title,author,subreddit,created_utc,selftext,url,permalink"
 
-# Simple keyword queries for Phase 2 subreddit searches.
-# Each is sent as a separate request — keeps Arctic Shift happy.
+# Arctic Shift requires a subreddit on every query — no global search.
+# Map each bar city to the subreddits most likely to mention it.
+CITY_SUBREDDITS = {
+    "Seattle":    ["SeattleWA", "Seattle", "AskSeattle", "SeattleHistory"],
+    "Everett":    ["Everett", "washingtonstate"],
+    "Denver":     ["Denver", "AskDenver", "DenverHistory", "Colorado"],
+    "Boulder":    ["Boulder", "Colorado"],
+    "Bloomington":["bloomington", "IndianaUniversity"],
+    "Ithaca":     ["ithaca", "Cornell"],
+    "Cambridge":  ["cambridge", "boston", "Harvard"],
+    "Lawrence":   ["lawrence"],
+    "Rosemead":   ["LosAngeles"],
+    "Arlington":  ["nova", "arlington"],
+    "Hanover":    ["NewHampshire", "Dartmouth"],
+    "Cincinnati": ["cincinnati"],
+}
+
+# General subreddits to also check for any bar name mention
+GENERAL_SUBREDDITS = ["divebars", "nostalgia", "gaybars", "Bars", "LGBTHistory"]
+
+# Trigger queries for Phase 2 — one per request per subreddit
 KEY_QUERIES = [
     "dive bar closed",
     "bar shirt gift",
@@ -126,7 +145,7 @@ def arctic_search(query: str, subreddit: str = None, days_back: int = 7, limit: 
     try:
         resp = requests.get(ARCTIC_BASE, params=params, headers=REDDIT_HEADERS, timeout=15)
         if resp.status_code != 200:
-            print(f"    Arctic Shift HTTP {resp.status_code} for query '{query}'")
+            print(f"    Arctic Shift HTTP {resp.status_code} for query '{query}': {resp.text[:200]}")
             return []
         return resp.json().get("data", [])
     except Exception as e:
@@ -262,17 +281,19 @@ def scan_reddit(days_back: int = 7):
     seen_ids = set()   # deduplicate across searches
     queued   = 0
 
-    # ── Phase 1: Search each bar name across all of Reddit ──────────────────
-    print(f"\n[Phase 1] Searching {len(BARS)} bar names across Reddit...")
+    # ── Phase 1: Search each bar name in its city subreddits ────────────────
+    print(f"\n[Phase 1] Searching {len(BARS)} bar names in city + general subreddits...")
     for bar in BARS:
-        print(f"  \"{bar['name']}\" ...", end=" ", flush=True)
-        posts = arctic_search(bar["name"], days_back=days_back, limit=25)
-        new_posts = [p for p in posts if p["id"] not in seen_ids]
-        seen_ids.update(p["id"] for p in posts)
-        print(f"{len(new_posts)} new posts")
-        for post in new_posts:
-            queued = process_post(post, queued)
-        time.sleep(1)
+        subs = CITY_SUBREDDITS.get(bar["city"], []) + GENERAL_SUBREDDITS
+        for sub in subs:
+            print(f"  \"{bar['name']}\" in r/{sub} ...", end=" ", flush=True)
+            posts = arctic_search(bar["name"], subreddit=sub, days_back=days_back, limit=25)
+            new_posts = [p for p in posts if p["id"] not in seen_ids]
+            seen_ids.update(p["id"] for p in posts)
+            print(f"{len(new_posts)} new posts")
+            for post in new_posts:
+                queued = process_post(post, queued)
+            time.sleep(0.5)
 
     # ── Phase 2: Trigger queries in target subreddits ───────────────────────
     print(f"\n[Phase 2] Searching {len(KEY_QUERIES)} queries across {len(SUBREDDITS)} subreddits...")
