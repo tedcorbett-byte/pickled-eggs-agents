@@ -29,15 +29,14 @@ REDDIT_HEADERS = {"User-Agent": REDDIT_USER_AGENT or "PickledEggsCo-Listener/1.0
 ARCTIC_BASE   = "https://arctic-shift.photon-reddit.com/api/posts/search"
 ARCTIC_FIELDS = "id,title,author,subreddit,created_utc,selftext,url,permalink"
 
-# Trigger phrases distilled to the highest-signal ones for keyword search
-# (shorter list keeps Arctic Shift queries fast and focused)
-KEY_TRIGGERS = [
-    "miss that bar", "closed down", "used to go to", "back in the day",
-    "they closed", "it closed", "bar is gone", "that place is gone",
-    "dive bar gift", "bar shirt", "bar t-shirt", "bar merch",
-    "gay bar closed", "queer bar closed", "lesbian bar closed",
-    "dive bar nostalgia", "neighborhood bar gone", "used to drink at",
-    "looking for a gift", "gift for someone who",
+# Simple keyword queries for Phase 2 subreddit searches.
+# Each is sent as a separate request — keeps Arctic Shift happy.
+KEY_QUERIES = [
+    "dive bar closed",
+    "bar shirt gift",
+    "miss that bar",
+    "gay bar closed",
+    "used to drink there",
 ]
 
 
@@ -273,20 +272,18 @@ def scan_reddit(days_back: int = 7):
             queued = process_post(post, queued)
         time.sleep(1)
 
-    # ── Phase 2: Trigger phrases in target subreddits ───────────────────────
-    print(f"\n[Phase 2] Searching trigger phrases in {len(SUBREDDITS)} subreddits...")
-    # Build a compact combined trigger query using OR
-    trigger_query = " OR ".join(f'"{t}"' for t in KEY_TRIGGERS[:10])
-
+    # ── Phase 2: Trigger queries in target subreddits ───────────────────────
+    print(f"\n[Phase 2] Searching {len(KEY_QUERIES)} queries across {len(SUBREDDITS)} subreddits...")
     for sub in SUBREDDITS:
-        print(f"  r/{sub} ...", end=" ", flush=True)
-        posts = arctic_search(trigger_query, subreddit=sub, days_back=days_back, limit=25)
-        new_posts = [p for p in posts if p["id"] not in seen_ids]
-        seen_ids.update(p["id"] for p in posts)
-        print(f"{len(new_posts)} new posts")
-        for post in new_posts:
-            queued = process_post(post, queued)
-        time.sleep(1)
+        for query in KEY_QUERIES:
+            print(f"  r/{sub} | \"{query}\" ...", end=" ", flush=True)
+            posts = arctic_search(query, subreddit=sub, days_back=days_back, limit=25)
+            new_posts = [p for p in posts if p["id"] not in seen_ids]
+            seen_ids.update(p["id"] for p in posts)
+            print(f"{len(new_posts)} new posts")
+            for post in new_posts:
+                queued = process_post(post, queued)
+            time.sleep(0.5)
 
     print(f"\nDone. Scanned {len(seen_ids)} unique posts, queued {queued} for review.")
     return queued
