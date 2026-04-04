@@ -27,7 +27,7 @@ from shared.db import get_conn, execute, fetchone
 REDDIT_HEADERS = {"User-Agent": REDDIT_USER_AGENT or "PickledEggsCo-Listener/1.0"}
 
 ARCTIC_BASE   = "https://arctic-shift.photon-reddit.com/api/posts/search"
-ARCTIC_FIELDS = "id,title,author,subreddit,created_utc,selftext,url,permalink"
+ARCTIC_FIELDS = "id,title,author,subreddit,created_utc,selftext,url"
 
 # Arctic Shift requires a subreddit on every query — no global search.
 # Map each bar city to the subreddits most likely to mention it.
@@ -222,7 +222,7 @@ def process_post(post: dict, queued_count: int) -> int:
     body     = post.get("selftext", "")
     author   = post.get("author", "[deleted]")
     sub      = post.get("subreddit", "")
-    url      = post.get("url") or f"https://reddit.com{post.get('permalink', '')}"
+    url      = post.get("url", "")
     post_id  = f"reddit_{post['id']}"
     created  = post.get("created_utc", 0)
 
