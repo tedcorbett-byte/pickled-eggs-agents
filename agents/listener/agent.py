@@ -2,11 +2,14 @@
 Pickled Eggs Co — Community Listener Agent
 ==========================================
 Monitors Reddit for posts mentioning our bars or dive bar nostalgia.
+Uses the Arctic Shift public API (no credentials required) so it works
+from any IP including Railway's cloud servers.
+
 Drafts authentic replies using Claude and queues them for human review.
 
 Run directly:
   python -m agents.listener.agent           # scan + queue results
-  python -m agents.listener.agent --limit 50
+  python -m agents.listener.agent --days 14  # look back 14 days (default 7)
 
 Or via scheduler.py / Railway cron.
 """
@@ -22,6 +25,20 @@ from shared.config import REDDIT_USER_AGENT, MIN_RELEVANCE_SCORE
 from shared.db import get_conn, execute, fetchone
 
 REDDIT_HEADERS = {"User-Agent": REDDIT_USER_AGENT or "PickledEggsCo-Listener/1.0"}
+
+ARCTIC_BASE   = "https://arctic-shift.photon-reddit.com/api/posts/search"
+ARCTIC_FIELDS = "id,title,author,subreddit,created_utc,selftext,url,permalink"
+
+# Trigger phrases distilled to the highest-signal ones for keyword search
+# (shorter list keeps Arctic Shift queries fast and focused)
+KEY_TRIGGERS = [
+    "miss that bar", "closed down", "used to go to", "back in the day",
+    "they closed", "it closed", "bar is gone", "that place is gone",
+    "dive bar gift", "bar shirt", "bar t-shirt", "bar merch",
+    "gay bar closed", "queer bar closed", "lesbian bar closed",
+    "dive bar nostalgia", "neighborhood bar gone", "used to drink at",
+    "looking for a gift", "gift for someone who",
+]
 
 
 # ─────────────────────────────────────────────
@@ -90,6 +107,33 @@ def find_matches(text: str) -> tuple[list, list]:
 
 
 # ─────────────────────────────────────────────
+# ARCTIC SHIFT FETCHER
+# ─────────────────────────────────────────────
+
+def arctic_search(query: str, subreddit: str = None, days_back: int = 7, limit: int = 25) -> list:
+    """Fetch posts from Arctic Shift matching a keyword query."""
+    params = {
+        "query":  query,
+        "after":  f"{days_back}d",
+        "limit":  limit,
+        "sort":   "desc",
+        "fields": ARCTIC_FIELDS,
+    }
+    if subreddit:
+        params["subreddit"] = subreddit
+
+    try:
+        resp = requests.get(ARCTIC_BASE, params=params, headers=REDDIT_HEADERS, timeout=15)
+        if resp.status_code != 200:
+            print(f"    Arctic Shift HTTP {resp.status_code} for query '{query}'")
+            return []
+        return resp.json().get("data", [])
+    except Exception as e:
+        print(f"    Arctic Shift error: {e}")
+        return []
+
+
+# ─────────────────────────────────────────────
 # SCORING + REPLY DRAFTING
 # ─────────────────────────────────────────────
 
@@ -149,95 +193,102 @@ Respond in this exact JSON format:
 
 
 # ─────────────────────────────────────────────
-# REDDIT SCANNER
+# PROCESS A SINGLE POST
 # ─────────────────────────────────────────────
 
-def scan_reddit(limit_per_sub: int = 100):
+def process_post(post: dict, queued_count: int) -> int:
+    """Score, draft, and save a single raw Arctic Shift post dict. Returns updated queued count."""
+    title    = post.get("title", "")
+    body     = post.get("selftext", "")
+    author   = post.get("author", "[deleted]")
+    sub      = post.get("subreddit", "")
+    url      = post.get("url") or f"https://reddit.com{post.get('permalink', '')}"
+    post_id  = f"reddit_{post['id']}"
+    created  = post.get("created_utc", 0)
+
+    if post_exists(post_id):
+        return queued_count
+
+    full_text = f"{title} {body}"
+    matched_bars, matched_triggers = find_matches(full_text)
+
+    print(f"\n    Found: {title[:70]}...")
+    result = score_and_draft(
+        post_title=title,
+        post_body=body,
+        matched_bars=matched_bars,
+        matched_triggers=matched_triggers,
+        post_url=url,
+    )
+
+    score = result.get("score", 0)
+    print(f"    Score: {score}/10 — {result.get('reason', '')}")
+
+    if score >= MIN_RELEVANCE_SCORE:
+        queued_count += 1
+        save_post({
+            "id":               post_id,
+            "platform":         "reddit",
+            "subreddit":        sub,
+            "title":            title,
+            "body":             body[:2000],
+            "url":              url,
+            "author":           author,
+            "created_at":       datetime.fromtimestamp(created, tz=timezone.utc).isoformat(),
+            "matched_bar":      ", ".join(matched_bars),
+            "matched_triggers": ", ".join(matched_triggers),
+            "relevance_score":  score,
+            "relevance_reason": result.get("reason", ""),
+            "draft_reply":      result.get("draft", ""),
+            "scanned_at":       datetime.now().isoformat(),
+        })
+
+    return queued_count
+
+
+# ─────────────────────────────────────────────
+# MAIN SCANNER
+# ─────────────────────────────────────────────
+
+def scan_reddit(days_back: int = 7):
     print(f"\n{'='*50}")
-    print(f"Community Listener — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"Community Listener (Arctic Shift) — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"  Looking back {days_back} days")
     print(f"{'='*50}")
 
     init_db()
 
-    found = 0
-    queued = 0
+    seen_ids = set()   # deduplicate across searches
+    queued   = 0
 
-    for sub_name in SUBREDDITS:
-        print(f"\n  r/{sub_name} ...", end=" ", flush=True)
-        try:
-            url = f"https://www.reddit.com/r/{sub_name}/new.json?limit={limit_per_sub}"
-            response = requests.get(url, headers=REDDIT_HEADERS, timeout=10)
+    # ── Phase 1: Search each bar name across all of Reddit ──────────────────
+    print(f"\n[Phase 1] Searching {len(BARS)} bar names across Reddit...")
+    for bar in BARS:
+        print(f"  \"{bar['name']}\" ...", end=" ", flush=True)
+        posts = arctic_search(f'"{bar["name"]}"', days_back=days_back, limit=25)
+        new_posts = [p for p in posts if p["id"] not in seen_ids]
+        seen_ids.update(p["id"] for p in posts)
+        print(f"{len(new_posts)} new posts")
+        for post in new_posts:
+            queued = process_post(post, queued)
+        time.sleep(1)
 
-            if response.status_code != 200:
-                print(f"error: HTTP {response.status_code}")
-                time.sleep(2)
-                continue
+    # ── Phase 2: Trigger phrases in target subreddits ───────────────────────
+    print(f"\n[Phase 2] Searching trigger phrases in {len(SUBREDDITS)} subreddits...")
+    # Build a compact combined trigger query using OR
+    trigger_query = " OR ".join(f'"{t}"' for t in KEY_TRIGGERS[:10])
 
-            posts = response.json().get("data", {}).get("children", [])
-            posts_checked = 0
+    for sub in SUBREDDITS:
+        print(f"  r/{sub} ...", end=" ", flush=True)
+        posts = arctic_search(trigger_query, subreddit=sub, days_back=days_back, limit=25)
+        new_posts = [p for p in posts if p["id"] not in seen_ids]
+        seen_ids.update(p["id"] for p in posts)
+        print(f"{len(new_posts)} new posts")
+        for post in new_posts:
+            queued = process_post(post, queued)
+        time.sleep(1)
 
-            for child in posts:
-                post = child.get("data", {})
-                posts_checked += 1
-                full_text = f"{post.get('title', '')} {post.get('selftext', '')}"
-                matched_bars, matched_triggers = find_matches(full_text)
-
-                if not matched_bars and not matched_triggers:
-                    continue
-
-                found += 1
-                post_id = f"reddit_{post['id']}"
-
-                if post_exists(post_id):
-                    continue
-
-                title = post.get("title", "")
-                body = post.get("selftext", "")
-                permalink = post.get("permalink", "")
-                author = post.get("author", "[deleted]")
-                created_utc = post.get("created_utc", 0)
-
-                print(f"\n    Found: {title[:60]}...")
-                result = score_and_draft(
-                    post_title=title,
-                    post_body=body,
-                    matched_bars=matched_bars,
-                    matched_triggers=matched_triggers,
-                    post_url=f"https://reddit.com{permalink}",
-                )
-
-                score = result.get("score", 0)
-                print(f"    Score: {score}/10 — {result.get('reason', '')}")
-
-                if score >= MIN_RELEVANCE_SCORE:
-                    queued += 1
-                    save_post({
-                        "id": post_id,
-                        "platform": "reddit",
-                        "subreddit": sub_name,
-                        "title": title,
-                        "body": body[:2000],
-                        "url": f"https://reddit.com{permalink}",
-                        "author": author,
-                        "created_at": datetime.fromtimestamp(
-                            created_utc, tz=timezone.utc
-                        ).isoformat(),
-                        "matched_bar": ", ".join(matched_bars),
-                        "matched_triggers": ", ".join(matched_triggers),
-                        "relevance_score": score,
-                        "relevance_reason": result.get("reason", ""),
-                        "draft_reply": result.get("draft", ""),
-                        "scanned_at": datetime.now().isoformat(),
-                    })
-
-            print(f"checked {posts_checked} posts")
-            time.sleep(2)  # Stay within Reddit's unauthenticated rate limit
-
-        except Exception as e:
-            print(f"error: {e}")
-            time.sleep(2)
-
-    print(f"\nDone. Found {found} candidate posts, queued {queued} for review.")
+    print(f"\nDone. Scanned {len(seen_ids)} unique posts, queued {queued} for review.")
     return queued
 
 
@@ -246,7 +297,7 @@ def scan_reddit(limit_per_sub: int = 100):
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Community Listener — scan Reddit for relevant posts")
-    parser.add_argument("--limit", type=int, default=100, help="Posts to check per subreddit")
+    parser = argparse.ArgumentParser(description="Community Listener — scan Reddit via Arctic Shift")
+    parser.add_argument("--days", type=int, default=7, help="How many days back to search (default 7)")
     args = parser.parse_args()
-    scan_reddit(limit_per_sub=args.limit)
+    scan_reddit(days_back=args.days)
