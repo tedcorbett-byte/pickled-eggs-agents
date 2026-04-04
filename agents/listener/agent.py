@@ -37,6 +37,8 @@ KEY_QUERIES = [
     "miss that bar",
     "gay bar closed",
     "used to drink there",
+    "neighborhood bar gone",
+    "closed dive bar",
 ]
 
 
@@ -264,7 +266,7 @@ def scan_reddit(days_back: int = 7):
     print(f"\n[Phase 1] Searching {len(BARS)} bar names across Reddit...")
     for bar in BARS:
         print(f"  \"{bar['name']}\" ...", end=" ", flush=True)
-        posts = arctic_search(f'"{bar["name"]}"', days_back=days_back, limit=25)
+        posts = arctic_search(bar["name"], days_back=days_back, limit=25)
         new_posts = [p for p in posts if p["id"] not in seen_ids]
         seen_ids.update(p["id"] for p in posts)
         print(f"{len(new_posts)} new posts")
