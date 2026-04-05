@@ -51,13 +51,32 @@ GENERAL_SUBREDDITS = ["divebars", "nostalgia", "gaybars", "Bars", "LGBTHistory"]
 
 # Trigger queries for Phase 2 — one per request per subreddit
 KEY_QUERIES = [
+    # Nostalgia / closed bars
     "dive bar closed",
-    "bar shirt gift",
     "miss that bar",
-    "gay bar closed",
-    "used to drink there",
     "neighborhood bar gone",
     "closed dive bar",
+    "used to drink there",
+    "bar we used to go to",
+    # Gifts / merch
+    "bar shirt gift",
+    "gift for bar lover",
+    # College reunions
+    "college reunion bar",
+    "alumni reunion bar",
+    "homecoming bar memories",
+    "bar from college days",
+    "reunion remember that bar",
+    "class reunion old bar",
+    # Gay / queer / pride
+    "gay bar closed",
+    "queer bar closed",
+    "lesbian bar gone",
+    "lost gay bar",
+    "pride bar memories",
+    "LGBTQ bar closed",
+    "queer space closed",
+    "gay bar nostalgia",
 ]
 
 

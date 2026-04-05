@@ -121,6 +121,11 @@ TRIGGER_PHRASES = [
     "looking for a gift", "gift for someone who", "gift idea", "dive bar gift",
     "bar shirt", "bar tshirt", "bar t-shirt", "bar merch",
     "gay bar closed", "lesbian bar closed", "queer bar closed",
+    "queer space closed", "lost gay bar", "gay bar nostalgia", "pride bar",
+    "LGBTQ bar", "queer bar gone",
+    # Reunions
+    "college reunion", "alumni reunion", "homecoming", "class reunion",
+    "bar from college", "reunion weekend", "alumni weekend",
     # Seattle
     "Capitol Hill bar", "Pike Pine bar", "Belltown bar", "old seattle",
     # Denver / Boulder
