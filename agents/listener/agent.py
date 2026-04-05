@@ -131,7 +131,7 @@ def find_matches(text: str) -> tuple[list, list]:
 # ─────────────────────────────────────────────
 
 def arctic_search(query: str, subreddit: str = None, days_back: int = 7, limit: int = 25) -> list:
-    """Fetch posts from Arctic Shift matching a keyword query."""
+    """Fetch posts from Arctic Shift matching a keyword query. Retries once on 429."""
     params = {
         "query":  query,
         "after":  f"{days_back}d",
@@ -142,15 +142,23 @@ def arctic_search(query: str, subreddit: str = None, days_back: int = 7, limit: 
     if subreddit:
         params["subreddit"] = subreddit
 
-    try:
-        resp = requests.get(ARCTIC_BASE, params=params, headers=REDDIT_HEADERS, timeout=15)
-        if resp.status_code != 200:
-            print(f"    Arctic Shift HTTP {resp.status_code} for query '{query}': {resp.text[:200]}")
+    for attempt in range(2):
+        try:
+            resp = requests.get(ARCTIC_BASE, params=params, headers=REDDIT_HEADERS, timeout=15)
+            if resp.status_code == 429:
+                wait = 10 if attempt == 0 else 30
+                print(f"    Arctic Shift 429 rate limit — waiting {wait}s then retrying...")
+                time.sleep(wait)
+                continue
+            if resp.status_code != 200:
+                print(f"    Arctic Shift HTTP {resp.status_code} for query '{query}': {resp.text[:200]}")
+                return []
+            return resp.json().get("data", [])
+        except Exception as e:
+            print(f"    Arctic Shift error: {e}")
             return []
-        return resp.json().get("data", [])
-    except Exception as e:
-        print(f"    Arctic Shift error: {e}")
-        return []
+    print(f"    Arctic Shift gave up after retries for query '{query}'")
+    return []
 
 
 # ─────────────────────────────────────────────
@@ -293,7 +301,7 @@ def scan_reddit(days_back: int = 7):
             print(f"{len(new_posts)} new posts")
             for post in new_posts:
                 queued = process_post(post, queued)
-            time.sleep(0.5)
+            time.sleep(2)
 
     # ── Phase 2: Trigger queries in target subreddits ───────────────────────
     print(f"\n[Phase 2] Searching {len(KEY_QUERIES)} queries across {len(SUBREDDITS)} subreddits...")
@@ -306,7 +314,7 @@ def scan_reddit(days_back: int = 7):
             print(f"{len(new_posts)} new posts")
             for post in new_posts:
                 queued = process_post(post, queued)
-            time.sleep(0.5)
+            time.sleep(2)
 
     print(f"\nDone. Scanned {len(seen_ids)} unique posts, queued {queued} for review.")
     return queued
