@@ -153,6 +153,24 @@ BARS_SUMMARY = "\n".join(
 )
 
 
+CANDIDATES = [
+    # Pre-seeded bar candidates worth researching as future products.
+    # Shape mirrors BARS, plus status, grief_score, and notes.
+    # The bar_scout agent discovers NEW candidates automatically and writes them
+    # to the bar_candidates DB table. To add a manual seed here, follow this shape:
+    #
+    # {
+    #     "name": "The Comet Tavern",
+    #     "city": "Seattle",
+    #     "state": "WA",
+    #     "description": "A Capitol Hill dive bar that outlasted a dozen neighborhood changes.",
+    #     "status": "discovered",
+    #     "grief_score": 8,
+    #     "notes": "Multiple Reddit threads. Long history on Pike St.",
+    # },
+]
+
+
 def bar_url_for(bar_name: str) -> str:
     """Return the product URL for a bar name, or the homepage as fallback."""
     for b in BARS:
