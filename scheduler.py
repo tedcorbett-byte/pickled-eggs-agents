@@ -26,7 +26,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from agents.listener.agent import scan_reddit
 from agents.content_freshness.agent import run as run_freshness
 from agents.content_multiplier.agent import run as run_multiplier
-from agents.bar_scout.agent import run as run_bar_scout
+from agents.bar_scout.agent import scan_for_candidates as run_bar_scout
 
 
 def run_all():
@@ -103,18 +103,20 @@ def main():
         misfire_grace_time=600,
     )
 
-    # Bar Scout is stubbed — uncomment when ready
-    # scheduler.add_job(
-    #     run_bar_scout,
-    #     CronTrigger(day_of_week="sun", hour=10, minute=0),
-    #     id="bar_scout",
-    #     name="Bar Scout",
-    # )
+    scheduler.add_job(
+        run_bar_scout,
+        CronTrigger(day_of_week="sun", hour=10, minute=0),
+        id="bar_scout",
+        name="Bar Scout",
+        max_instances=1,
+        misfire_grace_time=600,
+    )
 
     print("Scheduler started. Agents will run on their schedules.")
     print("  Listener:          every 4 hours")
     print("  Content Freshness: daily at 9:00am PT")
     print("  Content Multiplier: Mondays at 8:00am PT")
+    print("  Bar Scout:          Sundays at 10:00am PT")
     print("\nPress Ctrl+C to stop.\n")
 
     try:
