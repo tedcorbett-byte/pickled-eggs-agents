@@ -115,11 +115,12 @@ def init_db():
 def save_post(post: dict):
     with get_conn() as conn:
         execute(conn, """
-            INSERT OR IGNORE INTO posts (
+            INSERT INTO posts (
                 id, platform, subreddit, title, body, url, author,
                 created_at, matched_bar, matched_triggers,
                 relevance_score, relevance_reason, draft_reply, scanned_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (id) DO NOTHING
         """, (
             post["id"], post["platform"], post["subreddit"],
             post["title"], post["body"], post["url"], post["author"],
