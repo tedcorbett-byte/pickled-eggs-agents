@@ -16,7 +16,9 @@ from datetime import datetime
 
 from flask import Flask, jsonify, render_template_string, request
 
+from shared.bars import BARS
 from shared.db import execute, fetchall, fetchone, get_conn
+from agents.design_brief.agent import run_for_bar as generate_design_brief
 
 app = Flask(__name__)
 
@@ -91,6 +93,19 @@ def init_all_tables():
                 notes TEXT,
                 discovered_at TEXT,
                 updated_at TEXT
+            )
+        """)
+        execute(conn, """
+            CREATE TABLE IF NOT EXISTS design_briefs (
+                id TEXT PRIMARY KEY,
+                bar_name TEXT NOT NULL,
+                city TEXT,
+                state TEXT,
+                brief_json TEXT NOT NULL,
+                archival_sources TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at TEXT,
+                notes TEXT
             )
         """)
 
@@ -183,6 +198,29 @@ HTML = """
   .evidence-block.open { max-height: none; }
   .evidence-label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6e60; margin-bottom: 6px; }
 
+  /* Design Briefs */
+  .brief-card { background: #181410; border: 1px solid #2e2720; border-radius: 6px; margin-bottom: 20px; overflow: hidden; }
+  .brief-card.approved { border-left: 3px solid #2d6a2d; }
+  .brief-card.skipped  { border-left: 3px solid #3d3028; opacity: 0.6; }
+  .brief-header { padding: 14px 16px; border-bottom: 1px solid #2e2720; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .brief-header h3 { font-size: 15px; color: #e8dcc8; margin: 0 0 4px; }
+  .brief-header span { font-size: 12px; color: #7a6e60; }
+  .brief-header .brief-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .brief-vibe { padding: 12px 16px; font-size: 13px; color: #b0a898; font-style: italic; line-height: 1.6; border-bottom: 1px solid #2e2720; }
+  .directions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #2e2720; }
+  .direction-card { background: #0e0c09; border: 1px solid #2e2720; border-radius: 4px; padding: 12px; }
+  .direction-card h4 { font-size: 12px; color: #d4820a; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .direction-card p { font-size: 12px; color: #7a6e60; line-height: 1.5; margin-bottom: 6px; }
+  .direction-card ul { font-size: 11px; color: #5F5E5A; padding-left: 16px; margin: 0; }
+  .brief-section { padding: 10px 16px; border-bottom: 1px solid #2e2720; }
+  .brief-section h4 { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6e60; margin-bottom: 6px; }
+  .brief-section ul { font-size: 12px; color: #7a6e60; padding-left: 16px; margin: 0; line-height: 1.8; }
+  .brief-section ul a { color: #d4820a; text-decoration: none; }
+  .brief-section pre { font-size: 11px; color: #5F5E5A; white-space: pre-wrap; line-height: 1.6; margin: 0; }
+  .briefs-filter { padding: 12px 16px; display: flex; gap: 8px; align-items: center; }
+  .briefs-filter label { font-size: 12px; color: #7a6e60; }
+  .briefs-filter select { background: #0e0c09; border: 1px solid #2e2720; border-radius: 4px; padding: 5px 10px; color: #e8dcc8; font-size: 12px; font-family: inherit; }
+
   /* Modal */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
@@ -225,10 +263,23 @@ HTML = """
   <button class="tab-btn" data-tab="content_multiplier" onclick="setTab('content_multiplier')">Content Multiplier</button>
   <button class="tab-btn" data-tab="content_freshness" onclick="setTab('content_freshness')">Content Freshness</button>
   <button class="tab-btn" data-tab="bar_scout" onclick="setTab('bar_scout')">Bar Scout</button>
+  <button class="tab-btn" data-tab="briefs" onclick="setTab('briefs')">Design Briefs</button>
 </div>
 <div class="filters" id="filter-bar"></div>
 <main>
   <div id="post-list"></div>
+  <!-- Design Briefs panel (shown when briefs tab is active) -->
+  <div id="briefs-panel" style="display:none">
+    <div class="briefs-filter">
+      <label>Status:</label>
+      <select id="briefs-status-filter" onchange="loadBriefs()">
+        <option value="pending">Pending</option>
+        <option value="approved">Approved</option>
+        <option value="skipped">Skipped</option>
+      </select>
+    </div>
+    <div id="briefs-container"></div>
+  </div>
 </main>
 
 <script>
@@ -292,9 +343,82 @@ function setTab(t) {
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === t);
   });
+
+  const isBriefs = t === 'briefs';
+  document.getElementById('post-list').style.display   = isBriefs ? 'none' : '';
+  document.getElementById('briefs-panel').style.display = isBriefs ? '' : 'none';
+  document.getElementById('filter-bar').style.display   = isBriefs ? 'none' : '';
+
+  if (isBriefs) {
+    loadBriefs();
+    return;
+  }
+
   currentFilter = t === 'bar_scout' ? 'discovered' : 'pending';
   renderFilters();
   load();
+}
+
+// ── Design Briefs ────────────────────────────────────────────────────────────
+async function loadBriefs() {
+  const status = document.getElementById('briefs-status-filter').value;
+  const r      = await fetch('/api/briefs?status=' + status);
+  const briefs = await r.json();
+  const container = document.getElementById('briefs-container');
+  if (!briefs.length) {
+    container.innerHTML = "<div class='empty'>No briefs in this status.</div>";
+    return;
+  }
+  container.innerHTML = briefs.map(b => renderBrief(b)).join('');
+}
+
+function renderBrief(b) {
+  const brief = b.brief;
+  const directions = (brief.design_directions || []).map(d => `
+    <div class="direction-card">
+      <h4>${esc(d.name)}</h4>
+      <p>${esc(d.description)}</p>
+      <p><strong style="color:#e8dcc8">Typography:</strong> ${esc(d.typography)}</p>
+      <p><strong style="color:#e8dcc8">Era:</strong> ${esc(d.reference_era)}</p>
+      <p><strong style="color:#e8dcc8">Palette:</strong> ${esc((d.palette||[]).join(', '))}</p>
+      <ul>${(d.key_visual_elements||[]).map(e => `<li>${esc(e)}</li>`).join('')}</ul>
+    </div>
+  `).join('');
+
+  const avoid   = (brief.avoid||[]).map(a => `<li>${esc(a)}</li>`).join('');
+  const queries = (brief.image_search_queries||[]).map(q =>
+    `<li><a href="https://www.google.com/search?q=${encodeURIComponent(q)}&tbm=isch" target="_blank">${esc(q)}</a></li>`
+  ).join('');
+
+  return `
+  <div class="brief-card ${b.status}" id="brief-${b.id}">
+    <div class="brief-header">
+      <div>
+        <h3>${esc(b.bar_name)}</h3>
+        <span>${esc(b.city||'')}, ${esc(b.state||'')} — ${esc(brief.era||'')}</span>
+      </div>
+      <div class="brief-actions">
+        <button class="btn btn-approve" onclick="briefAction('${b.id}','approve')">✓ Approve</button>
+        <button class="btn btn-skip"    onclick="briefAction('${b.id}','regenerate')">↻ Regenerate</button>
+        <button class="btn btn-skip"    onclick="briefAction('${b.id}','skip')">Skip</button>
+      </div>
+    </div>
+    ${brief.vibe ? `<div class="brief-vibe">${esc(brief.vibe)}</div>` : ''}
+    ${directions ? `<div class="directions-grid">${directions}</div>` : ''}
+    ${avoid ? `<div class="brief-section"><h4>Avoid</h4><ul>${avoid}</ul></div>` : ''}
+    ${queries ? `<div class="brief-section"><h4>Image Search</h4><ul>${queries}</ul></div>` : ''}
+    ${b.archival_sources ? `<div class="brief-section"><h4>Archival Sources</h4><pre>${esc(b.archival_sources)}</pre></div>` : ''}
+    ${brief.brief_notes ? `<div class="brief-section"><h4>Notes</h4><p style="font-size:12px;color:#7a6e60">${esc(brief.brief_notes)}</p></div>` : ''}
+  </div>`;
+}
+
+async function briefAction(id, action) {
+  await fetch('/api/briefs/' + id + '/action', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ action }),
+  });
+  loadBriefs();
 }
 
 function setFilter(f) {
@@ -657,7 +781,78 @@ def api_graduate():
         f"        \"description\": {json.dumps(row['description'] or '')},\n"
         "    },"
     )
+
+    # Generate a design brief for the newly graduated bar (best-effort)
+    try:
+        graduated_bar = {
+            "name":        row["name"],
+            "city":        row.get("city", ""),
+            "state":       row.get("state", ""),
+            "description": row.get("description", ""),
+        }
+        generate_design_brief(graduated_bar)
+    except Exception as e:
+        app.logger.error(f"Design brief generation failed after graduation: {e}")
+        # Don't fail the graduation — brief generation is best-effort
+
     return jsonify({"ok": True, "snippet": snippet})
+
+
+@app.route("/api/briefs")
+def api_briefs():
+    status = request.args.get("status", "pending")
+    with get_conn() as conn:
+        rows = fetchall(conn,
+            "SELECT id, bar_name, city, state, brief_json, archival_sources, status, created_at, notes "
+            "FROM design_briefs WHERE status = ? ORDER BY created_at DESC LIMIT 50",
+            (status,),
+        )
+    briefs = []
+    for row in rows:
+        briefs.append({
+            "id":              row["id"],
+            "bar_name":        row["bar_name"],
+            "city":            row["city"],
+            "state":           row["state"],
+            "brief":           json.loads(row["brief_json"]),
+            "archival_sources": row["archival_sources"],
+            "status":          row["status"],
+            "created_at":      str(row["created_at"]),
+            "notes":           row["notes"],
+        })
+    return jsonify(briefs)
+
+
+@app.route("/api/briefs/<string:brief_id>/action", methods=["POST"])
+def api_brief_action(brief_id):
+    data   = request.json
+    action = data.get("action")
+    notes  = data.get("notes", "")
+    now    = datetime.now().isoformat()
+
+    if action == "regenerate":
+        with get_conn() as conn:
+            row = fetchone(conn, "SELECT bar_name FROM design_briefs WHERE id = ?", (brief_id,))
+        if not row:
+            return jsonify({"ok": False, "error": "Brief not found"}), 404
+        bar_name = row["bar_name"]
+        bar = next((b for b in BARS if b["name"] == bar_name), None)
+        if not bar:
+            return jsonify({"ok": False, "error": f"Bar '{bar_name}' not in BARS list"}), 404
+        # Delete old and regenerate
+        with get_conn() as conn:
+            execute(conn, "DELETE FROM design_briefs WHERE id = ?", (brief_id,))
+        brief = generate_design_brief(bar)
+        return jsonify({"ok": True, "brief": brief})
+
+    status_map = {"approve": "approved", "skip": "skipped"}
+    new_status = status_map.get(action, "skipped")
+    with get_conn() as conn:
+        execute(conn,
+            "UPDATE design_briefs SET status = ?, notes = ? WHERE id = ?",
+            (new_status, notes, brief_id),
+        )
+    return jsonify({"ok": True})
 
 
 # ─────────────────────────────────────────────
