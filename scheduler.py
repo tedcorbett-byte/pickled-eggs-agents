@@ -37,6 +37,8 @@ def run_all():
     run_freshness()
     print("\n--- Content Multiplier ---")
     run_multiplier()
+    print("\n--- Bar Scout ---")
+    run_bar_scout()
 
 
 def launch_ui():
