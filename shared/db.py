@@ -12,7 +12,9 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+# Prefer the public URL when running locally (railway run injects the internal
+# hostname which is only resolvable within Railway's network).
+DATABASE_URL = os.getenv("DATABASE_PUBLIC_URL") or os.getenv("DATABASE_URL", "")
 
 
 @contextmanager
