@@ -168,6 +168,79 @@ CANDIDATES = [
     #     "grief_score": 8,
     #     "notes": "Multiple Reddit threads. Long history on Pike St.",
     # },
+
+    # ── Portland, OR ──────────────────────────────────────────────────────────
+    {
+        "name": "Embers Avenue",
+        "city": "Portland",
+        "state": "OR",
+        "description": "Portland's longest-running gay bar and nightclub, open from 1975 to 2019 — 44 years on NW Broadway. Closed due to development pressure. A multigenerational anchor of Portland LGBTQ life.",
+        "status": "discovered",
+        "grief_score": 82,
+        "notes": "Zero competitor coverage. 44-year run. Geographically adjacent to Seattle market. Strong multigenerational alumni community.",
+    },
+    {
+        "name": "The Egyptian Club",
+        "city": "Portland",
+        "state": "OR",
+        "description": "Portland's last self-described lesbian bar, closed in 2010. No lesbian bar has replaced it in Portland since. Strong ongoing grief signal among Portland queer women's community.",
+        "status": "discovered",
+        "grief_score": 74,
+        "notes": "No competitor memorial shirt exists. Unique as Portland's final lesbian bar. Community grief well-documented online.",
+    },
+
+    # ── Chicago, IL ───────────────────────────────────────────────────────────
+    {
+        "name": "Little Jim's Tavern",
+        "city": "Chicago",
+        "state": "IL",
+        "description": "The first gay bar in Boystown and second-oldest gay bar in Chicago, open from 1975 to 2020 — 45 years. Known as the gay Cheers for its deeply inclusive, across-race-and-identity regulars. Closed when the property sold to Howard Brown Health for a clinic. Massive alumni community dispersed nationwide.",
+        "status": "discovered",
+        "grief_score": 88,
+        "notes": "No competitor memorial shirt exists. Chicago is a massive untapped market. 45-year run. Boystown institution with national alumni footprint.",
+    },
+
+    # ── Washington, DC ────────────────────────────────────────────────────────
+    {
+        "name": "Phase 1",
+        "city": "Washington",
+        "state": "DC",
+        "description": "The longest-running lesbian bar in America at the time of its closure in 2016. A community cornerstone for decades in DC. Closure mourned nationally with strong ongoing online grief signal.",
+        "status": "discovered",
+        "grief_score": 85,
+        "notes": "No competitor memorial shirt exists. National significance — longest-running lesbian bar in the US. Strong grief signal continues years after closure.",
+    },
+    {
+        "name": "Ziegfeld's / Secrets",
+        "city": "Washington",
+        "state": "DC",
+        "description": "A long-running DC drag institution and gay bar, closed in 2020. Known for performances and a welcoming, diverse queer clientele. A significant loss to the DC LGBTQ scene.",
+        "status": "discovered",
+        "grief_score": 71,
+        "notes": "No competitor memorial shirt exists. DC drag history angle. Closed during pandemic — recency adds grief intensity.",
+    },
+
+    # ── West Hollywood, CA ────────────────────────────────────────────────────
+    {
+        "name": "Gold Coast Bar",
+        "city": "West Hollywood",
+        "state": "CA",
+        "description": "Known as the last true dive bar in West Hollywood — 40 years of cheap drinks, longtime regulars, and zero pretension in a neighborhood that lost most of its dive bars long ago. The fourth WeHo gay bar to close during the pandemic in 2020.",
+        "status": "discovered",
+        "grief_score": 78,
+        "notes": "No competitor memorial shirt exists. Proves the LA market. Dive bar identity within gay bar world is a strong angle. 40-year run.",
+    },
+
+    # ── Ann Arbor, MI ─────────────────────────────────────────────────────────
+    {
+        "name": "aut Bar",
+        "city": "Ann Arbor",
+        "state": "MI",
+        "description": "Ann Arbor's LGBTQ bar for 25 years, founded by Keith Orr and Martin Contreras. Closed in July 2020 due to COVID financial difficulties. The University of Michigan alumni community is large and geographically dispersed — a strong gift-purchase signal across decades of graduates.",
+        "status": "discovered",
+        "grief_score": 76,
+        "notes": "No competitor memorial shirt exists. College town + LGBTQ angle. U of M alumni base is nationwide. High gift occasion relevance for reunions.",
+    },
 ]
 
 
