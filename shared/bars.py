@@ -112,6 +112,47 @@ SUBREDDITS = [
     "gaybars", "divebars", "nostalgia", "Bars", "BarCulture",
     "LGBTQ", "LGBT", "gay", "LGBTHistory",
     "whatisthisplace", "mildlynostalgia", "AskNYC", "BeerCulture",
+
+    # --- SEATTLE / PACIFIC NORTHWEST ---
+    "Seattlewiki", "Washington", "Belltown", "CapitolHillSeattle", "Fremont",
+
+    # --- SEATTLE UNIVERSITIES ---
+    "udub", "SeattleU", "SPU", "Gonzaga",
+
+    # --- DENVER / COLORADO ---
+    "FortCollins", "ColoradoSprings",
+
+    # --- COLORADO UNIVERSITIES ---
+    "CUBoulder", "UniversityofDenver", "ColoradoStateU", "AirForceAcademy",
+
+    # --- OTHER CATALOG CITIES ---
+    "KUCampus", "washingtondc", "hanover",
+
+    # --- EXPANSION CITIES (Bar Scout) ---
+    "Minneapolis", "Atlanta", "NewOrleans",
+
+    # --- LOCAL / URBAN HISTORY ---
+    "HistoricPreservation", "UrbanHell", "UrbanDecay", "lostplaces",
+    "AbandonedPorn", "OldPhotos", "VintagePhotos",
+
+    # --- DECADE / ERA NOSTALGIA ---
+    "90s", "80s", "70s", "Millennials", "GenX", "Xennials",
+
+    # --- LGBTQ ---
+    "gaybros", "ainbow", "latebloomerlesbians", "queer",
+    "ActualLesbians", "bisexual", "TransSupport",
+
+    # --- BAR / NIGHTLIFE CULTURE ---
+    "bartenders", "beer", "cocktails", "whiskey", "CasualConversation",
+
+    # --- MUSIC / VENUE OVERLAP ---
+    "vinyl", "indierock", "90sAlternative", "Grunge", "aves", "electronicmusic",
+
+    # --- GIFTING / PURCHASE INTENT ---
+    "Reunion", "weddingplanning",
+
+    # --- GENTRIFICATION / THIRD PLACES ---
+    "urbanplanning", "geography", "AskAmerican", "fuckcars", "ThriftStoreHauls",
 ]
 
 TRIGGER_PHRASES = [
@@ -145,6 +186,152 @@ TRIGGER_PHRASES = [
     # General
     "dive bar nostalgia", "neighborhood bar gone", "bar is gone", "used to drink at",
 ]
+
+KEY_QUERIES = [
+    # --- EXISTING (from listener agent) ---
+    "dive bar closed",
+    "miss that bar",
+    "neighborhood bar gone",
+    "closed dive bar",
+    "used to drink there",
+    "bar we used to go to",
+    "bar shirt gift",
+    "gift for bar lover",
+    "college reunion bar",
+    "alumni reunion bar",
+    "homecoming bar memories",
+    "bar from college days",
+    "reunion remember that bar",
+    "class reunion old bar",
+    "gay bar closed",
+    "queer bar closed",
+    "lesbian bar gone",
+    "lost gay bar",
+    "pride bar memories",
+    "LGBTQ bar closed",
+    "queer space closed",
+    "gay bar nostalgia",
+
+    # --- DIRECT BAR GRIEF ---
+    "bar that closed",
+    "remember when this bar",
+    "miss this bar",
+    "RIP to the bar",
+    "used to go to this bar",
+    "this bar closed",
+    "gone but not forgotten bar",
+    "bar that used to be here",
+    "they tore down the bar",
+    "bar is gone now",
+    "what happened to the bar",
+
+    # --- NEIGHBORHOOD / PLACE GRIEF ---
+    "this neighborhood used to",
+    "when Capitol Hill was",
+    "old Denver before it changed",
+    "Seattle before the tech bros",
+    "remember old Belltown",
+    "remember old Fremont",
+    "Colfax used to have",
+    "Pike Pine used to be",
+    "what this neighborhood lost",
+    "gentrification killed",
+    "rent killed the bar",
+    "priced out of the neighborhood",
+
+    # --- LGBTQ BAR GRIEF ---
+    "lesbian bar closed",
+    "queer bar that closed",
+    "gay bars are disappearing",
+    "miss the old gay bars",
+    "Capitol Hill gay bar",
+    "gayborhood used to be",
+    "safe space that closed",
+    "gay bar we lost",
+    "queer spaces closing",
+    "last lesbian bar",
+    "LGBTQ bar closure",
+
+    # --- DECADE NOSTALGIA ---
+    "bars in the 90s",
+    "going out in the 80s",
+    "nightlife in the 90s",
+    "clubs we used to go to",
+    "bars I grew up going to",
+    "dive bars in the 90s",
+    "remember this place in the 90s",
+    "Seattle nightlife 90s",
+    "Denver bars 80s",
+    "college bars we lost",
+
+    # --- COLLEGE / ALUMNI NOSTALGIA ---
+    "college bar that closed",
+    "bar near campus closed",
+    "alumni bar memories",
+    "homecoming and the bar is gone",
+    "went back to campus bar is gone",
+    "university bar shut down",
+    "bars near UW",
+    "bars near CU Boulder",
+    "bars near University of Denver",
+    "Husky bar memories",
+    "Buffs bar memories",
+
+    # --- GIFT / PURCHASE INTENT ---
+    "gift for someone who loves dive bars",
+    "gift for bar person",
+    "nostalgia gift idea",
+    "gift for someone from Seattle",
+    "gift for someone from Denver",
+    "gift for dad who loves bars",
+    "meaningful gift for a friend",
+    "unique gift for a guy",
+    "gift that tells a story",
+    "sentimental gift idea",
+    "gift for a beer lover",
+    "Father's Day gift bar",
+    "birthday gift dive bar",
+
+    # --- REUNION / OCCASION TRIGGERS ---
+    "high school reunion",
+    "college reunion coming up",
+    "alumni weekend",
+    "homecoming weekend",
+    "class reunion gift",
+    "going back to Seattle",
+    "going back to Denver",
+    "visiting old neighborhood",
+
+    # --- MUSIC VENUE GRIEF ---
+    "music venue that closed",
+    "concert venue we lost",
+    "show venue closed down",
+    "where we used to see bands",
+    "venue that closed",
+    "RIP to the venue",
+    "Nirvana Nevermind release party",
+    "Re-bar Seattle memories",
+    "Rainbow Music Hall Denver",
+
+    # --- TIKI / THEMED BAR GRIEF ---
+    "tiki bar closed",
+    "tiki bar we lost",
+    "Bahooka memories",
+    "tiki culture bar",
+
+    # --- BOWLING ALLEY / ADJACENT VENUES ---
+    "bowling alley bar closed",
+    "dive bowling alley",
+    "bowling bar memories",
+
+    # --- APPAREL / SHIRT HOOKS ---
+    "shirt about a bar",
+    "bar shirt",
+    "dive bar shirt",
+    "t-shirt for bar people",
+    "wearing a shirt from a closed bar",
+]
+
 
 # Preformatted string used in Claude prompts
 BARS_SUMMARY = "\n".join(

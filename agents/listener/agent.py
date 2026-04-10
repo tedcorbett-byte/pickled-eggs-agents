@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from shared.bars import BARS, SUBREDDITS, TRIGGER_PHRASES, BARS_SUMMARY, bar_url_for
+from shared.bars import BARS, SUBREDDITS, TRIGGER_PHRASES, KEY_QUERIES, BARS_SUMMARY, bar_url_for
 from shared.claude_client import complete_json
 from shared.config import REDDIT_USER_AGENT, MIN_RELEVANCE_SCORE
 from shared.db import get_conn, execute, fetchone
@@ -49,35 +49,7 @@ CITY_SUBREDDITS = {
 # General subreddits to also check for any bar name mention
 GENERAL_SUBREDDITS = ["divebars", "nostalgia", "gaybars", "Bars", "LGBTHistory"]
 
-# Trigger queries for Phase 2 — one per request per subreddit
-KEY_QUERIES = [
-    # Nostalgia / closed bars
-    "dive bar closed",
-    "miss that bar",
-    "neighborhood bar gone",
-    "closed dive bar",
-    "used to drink there",
-    "bar we used to go to",
-    # Gifts / merch
-    "bar shirt gift",
-    "gift for bar lover",
-    # College reunions
-    "college reunion bar",
-    "alumni reunion bar",
-    "homecoming bar memories",
-    "bar from college days",
-    "reunion remember that bar",
-    "class reunion old bar",
-    # Gay / queer / pride
-    "gay bar closed",
-    "queer bar closed",
-    "lesbian bar gone",
-    "lost gay bar",
-    "pride bar memories",
-    "LGBTQ bar closed",
-    "queer space closed",
-    "gay bar nostalgia",
-]
+# KEY_QUERIES imported from shared.bars
 
 
 # ─────────────────────────────────────────────

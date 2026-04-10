@@ -21,7 +21,6 @@ import sys
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 
 from agents.listener.agent import scan_reddit
 from agents.content_freshness.agent import run as run_freshness
@@ -80,11 +79,11 @@ def main():
 
     scheduler.add_job(
         scan_reddit,
-        IntervalTrigger(hours=4),
+        CronTrigger(hour=8, minute=0),
         id="listener",
         name="Community Listener",
         max_instances=1,
-        misfire_grace_time=300,
+        misfire_grace_time=600,
     )
 
     scheduler.add_job(
@@ -115,7 +114,7 @@ def main():
     )
 
     print("Scheduler started. Agents will run on their schedules.")
-    print("  Listener:          every 4 hours")
+    print("  Listener:          daily at 8:00am PT")
     print("  Content Freshness: daily at 9:00am PT")
     print("  Content Multiplier: Mondays at 8:00am PT")
     print("  Bar Scout:          Sundays at 10:00am PT")
