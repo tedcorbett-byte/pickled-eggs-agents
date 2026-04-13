@@ -160,7 +160,8 @@ def main():
 
     print("Scheduler started. Registered jobs:")
     for job in scheduler.get_jobs():
-        print(f"  [{job.id}] {job.name} — next run: {job.next_run_time}")
+        next_run = getattr(job, "next_run_time", None) or getattr(job, "next_fire_time", None)
+        print(f"  [{job.id}] {job.name} — next run: {next_run}")
     print("\nPress Ctrl+C to stop.\n")
 
     try:
