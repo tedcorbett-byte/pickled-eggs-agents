@@ -84,6 +84,18 @@ def run_migrations():
     migrations = [
         "ALTER TABLE bar_candidates ADD COLUMN category TEXT DEFAULT 'bar'",
         "ALTER TABLE posts ADD COLUMN category TEXT DEFAULT 'bar'",
+        """CREATE TABLE IF NOT EXISTS outreach_drafts (
+            id TEXT PRIMARY KEY,
+            source_post_id TEXT UNIQUE NOT NULL,
+            subreddit TEXT,
+            post_title TEXT,
+            bar_name TEXT,
+            product_url TEXT,
+            draft_text TEXT,
+            status TEXT DEFAULT 'pending',
+            notes TEXT,
+            created_at TEXT
+        )""",
     ]
     with get_conn() as conn:
         for sql in migrations:

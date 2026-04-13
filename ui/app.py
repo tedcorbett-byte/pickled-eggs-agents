@@ -14,7 +14,8 @@ import json
 import os
 from datetime import datetime
 
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, jsonify, render_template_string, request, Response
+from functools import wraps
 
 from shared.bars import BARS
 from shared.categories import CATEGORY_LABELS
@@ -22,6 +23,40 @@ from shared.db import execute, fetchall, fetchone, get_conn, run_migrations
 from agents.design_brief.agent import run_for_bar as generate_design_brief
 
 app = Flask(__name__)
+
+
+# ─────────────────────────────────────────────
+# HTTP BASIC AUTH
+# ─────────────────────────────────────────────
+
+def check_auth(username, password):
+    return (
+        username == os.environ.get("UI_USER", "admin") and
+        password == os.environ.get("UI_PASS", "changeme")
+    )
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return Response(
+                "Authentication required.",
+                401,
+                {"WWW-Authenticate": 'Basic realm="Pickled Eggs Dashboard"'}
+            )
+        return f(*args, **kwargs)
+    return decorated
+
+@app.before_request
+def protect():
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return Response(
+            "Authentication required.",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Pickled Eggs Dashboard"'}
+        )
 
 
 # ─────────────────────────────────────────────
@@ -107,6 +142,20 @@ def init_all_tables():
                 status TEXT DEFAULT 'pending',
                 created_at TEXT,
                 notes TEXT
+            )
+        """)
+        execute(conn, """
+            CREATE TABLE IF NOT EXISTS outreach_drafts (
+                id TEXT PRIMARY KEY,
+                source_post_id TEXT UNIQUE NOT NULL,
+                subreddit TEXT,
+                post_title TEXT,
+                bar_name TEXT,
+                product_url TEXT,
+                draft_text TEXT,
+                status TEXT DEFAULT 'pending',
+                notes TEXT,
+                created_at TEXT
             )
         """)
 
@@ -272,6 +321,7 @@ HTML = """
   <button class="tab-btn" data-tab="content_multiplier" onclick="setTab('content_multiplier')">Content Multiplier</button>
   <button class="tab-btn" data-tab="content_freshness" onclick="setTab('content_freshness')">Content Freshness</button>
   <button class="tab-btn" data-tab="bar_scout" onclick="setTab('bar_scout')">Bar Scout</button>
+  <button class="tab-btn" data-tab="outreach" onclick="setTab('outreach')">Outreach</button>
   <button class="tab-btn" data-tab="briefs" onclick="setTab('briefs')">Design Briefs</button>
 </div>
 <div class="filters" id="filter-bar"></div>
@@ -536,6 +586,11 @@ function render() {
     return;
   }
 
+  if (currentTab === 'outreach') {
+    el.innerHTML = items.map(item => renderOutreachCard(item)).join('');
+    return;
+  }
+
   el.innerHTML = items.map(item => {
     const isReviewed = item.status !== 'pending';
 
@@ -662,13 +717,56 @@ function renderCandidateCard(item) {
   </div>`;
 }
 
+function renderOutreachCard(item) {
+  const isReviewed = item.status !== 'pending';
+  return `
+  <div class="post-card ${isReviewed ? item.status : ''}" id="card-${item.id}">
+    <div class="post-head">
+      <div style="flex:1">
+        <div class="post-title">${esc(item.bar_name || 'No bar match')}</div>
+        <div class="post-meta">
+          r/${esc(item.subreddit)} · ${esc(item.post_title || '')}
+          ${item.product_url ? ` · <a href="${esc(item.product_url)}" target="_blank">product ↗</a>` : ''}
+        </div>
+      </div>
+      ${isReviewed ? `<span class="status-pill pill-${item.status}">${item.status}</span>` : ''}
+    </div>
+    <div class="reply-section">
+      <div class="reply-label">Draft reply</div>
+      <textarea id="reply-${item.id}" rows="5">${esc(item.draft_text)}</textarea>
+      <div class="reply-label" style="margin-top:10px">Notes</div>
+      <textarea id="notes-${item.id}" rows="2" placeholder="Add notes…">${esc(item.notes||'')}</textarea>
+      <div class="action-row">
+        ${!isReviewed
+          ? `<button class="btn btn-approve" onclick="outreachAct('${item.id}','approved')">Approve</button>
+             <button class="btn btn-skip"    onclick="outreachAct('${item.id}','skipped')">Skip</button>`
+          : `<button class="btn btn-skip"    onclick="outreachAct('${item.id}','pending')">Undo</button>`}
+        <span class="char-count" id="cc-${item.id}">${(item.draft_text||'').length} chars</span>
+        <button class="btn btn-copy" onclick="copyReply('${item.id}')">Copy reply</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function outreachAct(id, status) {
+  const draft = document.getElementById('reply-' + id)?.value;
+  const notes = document.getElementById('notes-' + id)?.value;
+  await fetch('/api/action', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ id, status, tab: 'outreach', notes }),
+  });
+  // Persist edited draft text back to source textarea for copy button
+  await load();
+}
+
 function toggleBody(id)     { document.getElementById('body-'+id).classList.toggle('open'); }
 function toggleEvidence(id) { document.getElementById('ev-'+id).classList.toggle('open'); }
 
 async function act(id, status, tab) {
-  // Save notes if on bar_scout before acting
+  // Save notes if on bar_scout or outreach before acting
   let body = { id, status, tab };
-  if (tab === 'bar_scout') {
+  if (tab === 'bar_scout' || tab === 'outreach') {
     const ta = document.getElementById('reply-' + id);
     if (ta) body.notes = ta.value;
   }
@@ -771,6 +869,13 @@ def api_items():
                 )
         return jsonify(rows)
 
+    if tab == "outreach":
+        with get_conn() as conn:
+            rows = fetchall(conn,
+                "SELECT * FROM outreach_drafts ORDER BY created_at DESC"
+            )
+        return jsonify(rows)
+
     return jsonify([])
 
 
@@ -787,6 +892,7 @@ def api_action():
         "content_multiplier": "content_drafts",
         "content_freshness":  "freshness_queue",
         "bar_scout":          "bar_candidates",
+        "outreach":           "outreach_drafts",
     }
     table = table_map.get(tab, "posts")
 
@@ -802,6 +908,18 @@ def api_action():
                 execute(conn,
                     "UPDATE bar_candidates SET status=?, updated_at=? WHERE id=?",
                     (status, now, item_id),
+                )
+        elif tab == "outreach":
+            notes = data.get("notes")
+            if notes is not None:
+                execute(conn,
+                    "UPDATE outreach_drafts SET status=?, notes=? WHERE id=?",
+                    (status, notes, item_id),
+                )
+            else:
+                execute(conn,
+                    "UPDATE outreach_drafts SET status=? WHERE id=?",
+                    (status, item_id),
                 )
         else:
             execute(conn,

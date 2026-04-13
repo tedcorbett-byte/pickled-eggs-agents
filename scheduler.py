@@ -23,6 +23,7 @@ Schedules:
     venue:      10:30am PT
     restaurant: 11:00am PT
     rink:       11:30am PT
+  Outreach — Wednesdays at 9:00am PT
 """
 import argparse
 import sys
@@ -35,6 +36,7 @@ from agents.listener.agent import scan_reddit
 from agents.content_freshness.agent import run as run_freshness
 from agents.content_multiplier.agent import run as run_multiplier
 from agents.bar_scout.agent import scan_for_candidates as run_bar_scout
+from agents.outreach.agent import run as run_outreach
 
 
 run_migrations()
@@ -50,6 +52,8 @@ def run_all():
     run_multiplier()
     print("\n--- Bar Scout ---")
     run_bar_scout()
+    print("\n--- Outreach ---")
+    run_outreach()
 
 
 def launch_ui():
@@ -63,7 +67,7 @@ def launch_ui():
 def main():
     parser = argparse.ArgumentParser(description="Pickled Eggs Co agent scheduler")
     parser.add_argument("--now",   action="store_true", help="Run all agents once and exit")
-    parser.add_argument("--agent", choices=["listener", "freshness", "multiplier", "scout"],
+    parser.add_argument("--agent", choices=["listener", "freshness", "multiplier", "scout", "outreach"],
                         help="Run a single agent immediately and exit")
     parser.add_argument("--ui",    action="store_true", help="Launch review UI only")
     args = parser.parse_args()
@@ -82,6 +86,7 @@ def main():
             "freshness": run_freshness,
             "multiplier": run_multiplier,
             "scout":     run_bar_scout,
+            "outreach":  run_outreach,
         }
         dispatch[args.agent]()
         return
@@ -122,6 +127,16 @@ def main():
         CronTrigger(day_of_week="mon", hour=8, minute=0),
         id="content_multiplier",
         name="Content Multiplier",
+        max_instances=1,
+        misfire_grace_time=600,
+    )
+
+    # Outreach — Wednesdays at 9:00am PT
+    scheduler.add_job(
+        run_outreach,
+        CronTrigger(day_of_week="wed", hour=9, minute=0),
+        id="outreach",
+        name="Outreach",
         max_instances=1,
         misfire_grace_time=600,
     )
