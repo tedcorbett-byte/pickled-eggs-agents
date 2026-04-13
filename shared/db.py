@@ -97,18 +97,22 @@ def run_migrations():
             created_at TEXT
         )""",
     ]
-    with get_conn() as conn:
-        for sql in migrations:
-            try:
+    # Each migration runs in its own connection so that a failed statement
+    # (e.g. column already exists) does not poison the transaction for later ones.
+    # PostgreSQL aborts the whole transaction on any error, so sharing one
+    # connection across migrations would leave subsequent statements dead.
+    for sql in migrations:
+        try:
+            with get_conn() as conn:
                 execute(conn, sql)
-            except Exception as e:
-                msg = str(e).lower()
-                if (
-                    "duplicate column" in msg      # SQLite: column already exists
-                    or "already exists" in msg     # PostgreSQL: column already exists
-                    or "no such table" in msg      # fresh local install, table not yet created
-                    or "does not exist" in msg     # PostgreSQL: table not yet created
-                ):
-                    pass
-                else:
-                    raise
+        except Exception as e:
+            msg = str(e).lower()
+            if (
+                "duplicate column" in msg      # SQLite: column already exists
+                or "already exists" in msg     # PostgreSQL: column already exists
+                or "no such table" in msg      # fresh local install, table not yet created
+                or "does not exist" in msg     # PostgreSQL: table not yet created
+            ):
+                pass
+            else:
+                raise
