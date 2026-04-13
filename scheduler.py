@@ -7,14 +7,22 @@ Also optionally launches the review UI after each scan.
 Usage:
   python scheduler.py             # run scheduler (blocking)
   python scheduler.py --now       # run all agents once immediately, then exit
-  python scheduler.py --agent listener  # run one agent immediately
+  python scheduler.py --agent listener  # run one agent immediately (bar category)
   python scheduler.py --ui        # just launch the review UI
 
 Schedules:
-  Community Listener    — every 4 hours
-  Content Freshness     — daily at 9:00am
-  Content Multiplier    — Mondays at 8:00am
-  Bar Scout             — Sundays at 10:00am (stub, not active yet)
+  Community Listener — daily, four categories staggered 15 min apart:
+    bar:        8:00am PT
+    venue:      8:15am PT
+    restaurant: 8:30am PT
+    rink:       8:45am PT
+  Content Freshness  — daily at 9:00am PT
+  Content Multiplier — Mondays at 8:00am PT
+  Bar Scout — weekly Sundays, four categories staggered 30 min apart:
+    bar:        10:00am PT
+    venue:      10:30am PT
+    restaurant: 11:00am PT
+    rink:       11:30am PT
 """
 import argparse
 import sys
@@ -22,10 +30,14 @@ import sys
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from shared.db import run_migrations
 from agents.listener.agent import scan_reddit
 from agents.content_freshness.agent import run as run_freshness
 from agents.content_multiplier.agent import run as run_multiplier
 from agents.bar_scout.agent import scan_for_candidates as run_bar_scout
+
+
+run_migrations()
 
 
 def run_all():
@@ -77,15 +89,24 @@ def main():
     # ── Scheduled mode ────────────────────────────────────────────────────
     scheduler = BlockingScheduler(timezone="America/Los_Angeles")
 
-    scheduler.add_job(
-        scan_reddit,
-        CronTrigger(hour=8, minute=0),
-        id="listener",
-        name="Community Listener",
-        max_instances=1,
-        misfire_grace_time=600,
-    )
+    # Community Listener — daily, four categories staggered 15 min apart
+    for cat, hour, minute in [
+        ("bar",        8,  0),
+        ("venue",      8, 15),
+        ("restaurant", 8, 30),
+        ("rink",       8, 45),
+    ]:
+        scheduler.add_job(
+            scan_reddit,
+            CronTrigger(hour=hour, minute=minute),
+            id=f"listener_{cat}",
+            name=f"Community Listener — {cat}",
+            kwargs={"category": cat},
+            max_instances=1,
+            misfire_grace_time=600,
+        )
 
+    # Content Freshness — daily at 9:00am PT (unchanged)
     scheduler.add_job(
         run_freshness,
         CronTrigger(hour=9, minute=0),
@@ -95,6 +116,7 @@ def main():
         misfire_grace_time=600,
     )
 
+    # Content Multiplier — Mondays at 8:00am PT (unchanged)
     scheduler.add_job(
         run_multiplier,
         CronTrigger(day_of_week="mon", hour=8, minute=0),
@@ -104,20 +126,26 @@ def main():
         misfire_grace_time=600,
     )
 
-    scheduler.add_job(
-        run_bar_scout,
-        CronTrigger(day_of_week="sun", hour=10, minute=0),
-        id="bar_scout",
-        name="Bar Scout",
-        max_instances=1,
-        misfire_grace_time=600,
-    )
+    # Bar Scout — Sundays, four categories staggered 30 min apart
+    for cat, hour, minute in [
+        ("bar",        10,  0),
+        ("venue",      10, 30),
+        ("restaurant", 11,  0),
+        ("rink",       11, 30),
+    ]:
+        scheduler.add_job(
+            run_bar_scout,
+            CronTrigger(day_of_week="sun", hour=hour, minute=minute),
+            id=f"bar_scout_{cat}",
+            name=f"Bar Scout — {cat}",
+            kwargs={"category": cat},
+            max_instances=1,
+            misfire_grace_time=600,
+        )
 
-    print("Scheduler started. Agents will run on their schedules.")
-    print("  Listener:          daily at 8:00am PT")
-    print("  Content Freshness: daily at 9:00am PT")
-    print("  Content Multiplier: Mondays at 8:00am PT")
-    print("  Bar Scout:          Sundays at 10:00am PT")
+    print("Scheduler started. Registered jobs:")
+    for job in scheduler.get_jobs():
+        print(f"  [{job.id}] {job.name} — next run: {job.next_run_time}")
     print("\nPress Ctrl+C to stop.\n")
 
     try:

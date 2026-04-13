@@ -38,6 +38,7 @@ from datetime import datetime
 import requests
 
 from shared.bars import BARS, CANDIDATES
+from shared.categories import CATEGORIES
 from shared.claude_client import complete_json
 from shared.config import REDDIT_USER_AGENT
 from shared.db import get_conn, execute, fetchone
@@ -139,6 +140,7 @@ def init_db():
                 grief_breakdown TEXT,
                 disqualifiers TEXT,
                 status TEXT DEFAULT 'discovered',
+                category TEXT DEFAULT 'bar',
                 notes TEXT,
                 discovered_at TEXT,
                 updated_at TEXT
@@ -181,15 +183,17 @@ def candidate_exists(name: str, city: str) -> bool:
 
 
 def save_candidate(*, name, city, state, description, source_url,
-                   source_subreddit, evidence, grief_score, grief_breakdown, disqualifiers):
+                   source_subreddit, evidence, grief_score, grief_breakdown,
+                   disqualifiers, category="bar"):
     with get_conn() as conn:
         execute(conn, """
             INSERT INTO bar_candidates
                 (id, name, city, state, description,
                  source_url, source_subreddit, evidence,
                  grief_score, grief_breakdown, disqualifiers,
-                 status, discovered_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?, ?)
+                 status, category, discovered_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?, ?, ?)
+            ON CONFLICT (id) DO NOTHING
         """, (
             str(uuid.uuid4()),
             name, city, state, description,
@@ -197,6 +201,7 @@ def save_candidate(*, name, city, state, description, source_url,
             grief_score,
             json.dumps(grief_breakdown),
             json.dumps(disqualifiers),
+            category,
             datetime.now().isoformat(),
             datetime.now().isoformat(),
         ))
@@ -239,11 +244,13 @@ def arctic_search(query: str, subreddit: str, days_back: int = 30, limit: int = 
 # SCORING (Claude + Grief Rubric)
 # ─────────────────────────────────────────────
 
-def score_candidate(title: str, body: str, subreddit: str) -> dict:
+def score_candidate(title: str, body: str, subreddit: str,
+                    extra_disqualifiers: list | None = None) -> dict:
     """
-    Ask Claude to determine if the post surfaces a scoreable closed bar,
+    Ask Claude to determine if the post surfaces a scoreable closed venue,
     then apply the full Grief Rubric (9 signals, 0-5 each) and check
-    4 instant disqualifiers. Returns a dict or {"is_candidate": false}.
+    instant disqualifiers. Returns a dict or {"is_candidate": false}.
+    extra_disqualifiers: category-specific strings Claude should flag.
     """
     known = ", ".join(f"{b['name']} ({b['city']}, {b['state']})" for b in BARS)
 
@@ -288,15 +295,16 @@ SIGNALS (score 0-5 each):
   design_potential      — 0=nothing to work with, 1=weak, 2=okay name/era, 3=good aesthetic, 4=great name+era, 5=iconic visual identity
 
 INSTANT DISQUALIFIERS (true = disqualified):
-  disputed_closure   — Ongoing legal fight or owner publicly plans to reopen
-  harm_associated    — Scandal, crime, or abuse dominates the story
-  story_too_thin     — No memorable details, incidents, or characters found anywhere
-  too_similar        — Same city AND same bar type as something already in the catalog
+  disputed_closure      — Ongoing legal fight or owner publicly plans to reopen
+  harm_associated       — Scandal, crime, or abuse dominates the story
+  story_too_thin        — No memorable details, incidents, or characters found anywhere
+  too_similar           — Same city AND same type as something already in the catalog
+  category_disqualified — Matches any of these signals: {', '.join(extra_disqualifiers or [])}
 
 Respond in exactly this JSON format:
 {{
   "is_candidate": true,
-  "name": "<bar name>",
+  "name": "<name>",
   "city": "<city>",
   "state": "<state>",
   "description": "<2-3 sentences>",
@@ -315,7 +323,8 @@ Respond in exactly this JSON format:
     "disputed_closure": false,
     "harm_associated": false,
     "story_too_thin": false,
-    "too_similar": false
+    "too_similar": false,
+    "category_disqualified": false
   }}
 }}
 
@@ -332,26 +341,36 @@ Or if not a candidate: {{"is_candidate": false}}"""
 # MAIN SCANNER
 # ─────────────────────────────────────────────
 
-def scan_for_candidates(days_back: int = 30):
+def scan_for_candidates(days_back: int = 30, category: str = "bar"):
     print(f"\n{'='*50}")
-    print(f"Bar Scout — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"Bar Scout [{category}] — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"  Looking back {days_back} days | min grief score {MIN_GRIEF_SCORE}/100")
     print(f"{'='*50}")
 
     init_db()
 
-    # Build flat deduplicated subreddit list
-    all_subs = []
-    for subs in SCOUT_SUBREDDITS.values():
-        all_subs.extend(subs)
-    all_subs.extend(GENERAL_SCOUT_SUBREDDITS)
-    all_subs = list(dict.fromkeys(all_subs))   # preserve order, remove dupes
+    # Resolve queries, subreddits, and extra disqualifiers by category
+    if category == "bar":
+        queries              = BAR_SCOUT_QUERIES
+        extra_disqualifiers  = []
+        all_subs = []
+        for subs in SCOUT_SUBREDDITS.values():
+            all_subs.extend(subs)
+        all_subs.extend(GENERAL_SCOUT_SUBREDDITS)
+        all_subs = list(dict.fromkeys(all_subs))
+    elif category in CATEGORIES:
+        cat_data             = CATEGORIES[category]
+        queries              = cat_data["trigger_phrases"]
+        extra_disqualifiers  = cat_data["disqualifiers"]
+        all_subs             = cat_data["subreddits"]
+    else:
+        raise ValueError(f"Unknown category '{category}'. Valid: bar, {', '.join(CATEGORIES)}")
 
     seen_post_ids = set()
     discovered    = 0
 
     for sub in all_subs:
-        for query in BAR_SCOUT_QUERIES:
+        for query in queries:
             print(f"  r/{sub} | \"{query}\" ...", end=" ", flush=True)
             posts = arctic_search(query, subreddit=sub, days_back=days_back)
             new_posts = [p for p in posts if p["id"] not in seen_post_ids]
@@ -363,7 +382,8 @@ def scan_for_candidates(days_back: int = 30):
                 body  = post.get("selftext", "")
                 url   = post.get("url", "")
 
-                result = score_candidate(title, body, sub)
+                result = score_candidate(title, body, sub,
+                                         extra_disqualifiers=extra_disqualifiers)
 
                 if not result.get("is_candidate"):
                     continue
@@ -375,10 +395,10 @@ def scan_for_candidates(days_back: int = 30):
                     print(f"    Disqualified ({', '.join(active)}): {result.get('name', '?')}")
                     continue
 
-                breakdown = result.get("breakdown", {})
+                breakdown   = result.get("breakdown", {})
                 grief_score = compute_grief_score(breakdown)
-                name = result.get("name", "").strip()
-                city = result.get("city", "").strip()
+                name        = result.get("name", "").strip()
+                city        = result.get("city", "").strip()
 
                 print(f"    {name} ({city}) — {grief_score}/100 [{grief_label(grief_score)}]")
 
@@ -402,6 +422,7 @@ def scan_for_candidates(days_back: int = 30):
                     grief_score      = grief_score,
                     grief_breakdown  = breakdown,
                     disqualifiers    = disq,
+                    category         = category,
                 )
                 print(f"    SAVED.")
 

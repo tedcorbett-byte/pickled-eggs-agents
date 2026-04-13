@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 import requests
 
 from shared.bars import BARS, SUBREDDITS, TRIGGER_PHRASES, KEY_QUERIES, BARS_SUMMARY, bar_url_for
+from shared.categories import CATEGORIES
 from shared.claude_client import complete_json
 from shared.config import REDDIT_USER_AGENT, MIN_RELEVANCE_SCORE
 from shared.db import get_conn, execute, fetchone
@@ -74,6 +75,7 @@ def init_db():
                 relevance_reason TEXT,
                 draft_reply TEXT,
                 status TEXT DEFAULT 'pending',
+                category TEXT DEFAULT 'bar',
                 reviewed_at TEXT,
                 scanned_at TEXT
             )
@@ -90,15 +92,15 @@ def save_post(post: dict):
             INSERT INTO posts (
                 id, platform, subreddit, title, body, url, author,
                 created_at, matched_bar, matched_triggers,
-                relevance_score, relevance_reason, draft_reply, scanned_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                relevance_score, relevance_reason, draft_reply, category, scanned_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO NOTHING
         """, (
             post["id"], post["platform"], post["subreddit"],
             post["title"], post["body"], post["url"], post["author"],
             post["created_at"], post["matched_bar"], post["matched_triggers"],
             post["relevance_score"], post["relevance_reason"],
-            post["draft_reply"], post["scanned_at"],
+            post["draft_reply"], post.get("category", "bar"), post["scanned_at"],
         ))
 
 
@@ -111,10 +113,14 @@ def post_exists(post_id: str) -> bool:
 # MATCHING
 # ─────────────────────────────────────────────
 
-def find_matches(text: str) -> tuple[list, list]:
-    text_lower = text.lower()
-    matched_bars     = [b["name"] for b in BARS if b["name"].lower() in text_lower]
-    matched_triggers = [t for t in TRIGGER_PHRASES if t.lower() in text_lower]
+def find_matches(text: str, bars=None, triggers=None) -> tuple[list, list]:
+    if bars is None:
+        bars = BARS
+    if triggers is None:
+        triggers = TRIGGER_PHRASES
+    text_lower       = text.lower()
+    matched_bars     = [b["name"] for b in bars if b["name"].lower() in text_lower]
+    matched_triggers = [t for t in triggers if t.lower() in text_lower]
     return matched_bars, matched_triggers
 
 
@@ -216,7 +222,8 @@ Respond in this exact JSON format:
 # PROCESS A SINGLE POST
 # ─────────────────────────────────────────────
 
-def process_post(post: dict, queued_count: int) -> int:
+def process_post(post: dict, queued_count: int, category: str = "bar",
+                 bars=None, triggers=None) -> int:
     """Score, draft, and save a single raw Arctic Shift post dict. Returns updated queued count."""
     title    = post.get("title", "")
     body     = post.get("selftext", "")
@@ -230,7 +237,7 @@ def process_post(post: dict, queued_count: int) -> int:
         return queued_count
 
     full_text = f"{title} {body}"
-    matched_bars, matched_triggers = find_matches(full_text)
+    matched_bars, matched_triggers = find_matches(full_text, bars=bars, triggers=triggers)
 
     print(f"\n    Found: {title[:70]}...")
     result = score_and_draft(
@@ -260,6 +267,7 @@ def process_post(post: dict, queued_count: int) -> int:
             "relevance_score":  score,
             "relevance_reason": result.get("reason", ""),
             "draft_reply":      result.get("draft", ""),
+            "category":         category,
             "scanned_at":       datetime.now().isoformat(),
         })
 
@@ -270,42 +278,62 @@ def process_post(post: dict, queued_count: int) -> int:
 # MAIN SCANNER
 # ─────────────────────────────────────────────
 
-def scan_reddit(days_back: int = 7):
+def scan_reddit(days_back: int = 7, category: str = "bar"):
     print(f"\n{'='*50}")
-    print(f"Community Listener (Arctic Shift) — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"Community Listener [{category}] (Arctic Shift) — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"  Looking back {days_back} days")
     print(f"{'='*50}")
 
     init_db()
 
-    seen_ids = set()   # deduplicate across searches
+    # Resolve known items, subreddits, queries, and triggers by category
+    if category == "bar":
+        known_items      = BARS
+        scan_subreddits  = SUBREDDITS
+        queries          = KEY_QUERIES
+        triggers         = TRIGGER_PHRASES
+    elif category in CATEGORIES:
+        cat_data         = CATEGORIES[category]
+        known_items      = cat_data["candidates"]   # empty now; grows as Bar Scout discovers
+        scan_subreddits  = cat_data["subreddits"]
+        queries          = cat_data["trigger_phrases"]
+        triggers         = cat_data["trigger_phrases"]
+    else:
+        raise ValueError(f"Unknown category '{category}'. Valid: bar, {', '.join(CATEGORIES)}")
+
+    seen_ids = set()
     queued   = 0
 
-    # ── Phase 1: Search each bar name in its city subreddits ────────────────
-    print(f"\n[Phase 1] Searching {len(BARS)} bar names in city + general subreddits...")
-    for bar in BARS:
-        subs = CITY_SUBREDDITS.get(bar["city"], []) + GENERAL_SUBREDDITS
-        for sub in subs:
-            print(f"  \"{bar['name']}\" in r/{sub} ...", end=" ", flush=True)
-            posts = arctic_search(bar["name"], subreddit=sub, days_back=days_back, limit=25)
-            new_posts = [p for p in posts if p["id"] not in seen_ids]
-            seen_ids.update(p["id"] for p in posts)
-            print(f"{len(new_posts)} new posts")
-            for post in new_posts:
-                queued = process_post(post, queued)
-            time.sleep(2)
+    # ── Phase 1: Search each known item name ────────────────────────────────
+    if known_items:
+        print(f"\n[Phase 1] Searching {len(known_items)} known names...")
+        for item in known_items:
+            subs = CITY_SUBREDDITS.get(item.get("city", ""), []) + GENERAL_SUBREDDITS
+            for sub in subs:
+                print(f"  \"{item['name']}\" in r/{sub} ...", end=" ", flush=True)
+                posts = arctic_search(item["name"], subreddit=sub, days_back=days_back, limit=25)
+                new_posts = [p for p in posts if p["id"] not in seen_ids]
+                seen_ids.update(p["id"] for p in posts)
+                print(f"{len(new_posts)} new posts")
+                for post in new_posts:
+                    queued = process_post(post, queued, category=category,
+                                          bars=known_items, triggers=triggers)
+                time.sleep(2)
+    else:
+        print(f"\n[Phase 1] No known {category} names yet — skipping name scan.")
 
     # ── Phase 2: Trigger queries in target subreddits ───────────────────────
-    print(f"\n[Phase 2] Searching {len(KEY_QUERIES)} queries across {len(SUBREDDITS)} subreddits...")
-    for sub in SUBREDDITS:
-        for query in KEY_QUERIES:
+    print(f"\n[Phase 2] Searching {len(queries)} queries across {len(scan_subreddits)} subreddits...")
+    for sub in scan_subreddits:
+        for query in queries:
             print(f"  r/{sub} | \"{query}\" ...", end=" ", flush=True)
             posts = arctic_search(query, subreddit=sub, days_back=days_back, limit=25)
             new_posts = [p for p in posts if p["id"] not in seen_ids]
             seen_ids.update(p["id"] for p in posts)
             print(f"{len(new_posts)} new posts")
             for post in new_posts:
-                queued = process_post(post, queued)
+                queued = process_post(post, queued, category=category,
+                                       bars=known_items, triggers=triggers)
             time.sleep(2)
 
     print(f"\nDone. Scanned {len(seen_ids)} unique posts, queued {queued} for review.")

@@ -17,7 +17,8 @@ from datetime import datetime
 from flask import Flask, jsonify, render_template_string, request
 
 from shared.bars import BARS
-from shared.db import execute, fetchall, fetchone, get_conn
+from shared.categories import CATEGORY_LABELS
+from shared.db import execute, fetchall, fetchone, get_conn, run_migrations
 from agents.design_brief.agent import run_for_bar as generate_design_brief
 
 app = Flask(__name__)
@@ -111,6 +112,7 @@ def init_all_tables():
 
 
 init_all_tables()
+run_migrations()
 
 
 # ─────────────────────────────────────────────
@@ -180,6 +182,13 @@ HTML = """
   .pill-skipped   { background: #2e2720; color: #7a6e60; }
   .pill-rejected  { background: #2e2720; color: #7a6e60; }
   .pill-graduated { background: #3d2f6a; color: #b39ddb; }
+
+  /* Category badges */
+  .cat-badge { font-size: 10px; padding: 2px 7px; border-radius: 3px; font-weight: 600; letter-spacing: 0.05em; white-space: nowrap; }
+  .cat-bar        { background: #3d2f1a; color: #d4820a; }
+  .cat-venue      { background: #1a2d3d; color: #4aa8d4; }
+  .cat-restaurant { background: #1a3d1a; color: #4ad44a; }
+  .cat-rink       { background: #3d1a3d; color: #d44ad4; }
 
   /* Bar Scout specific */
   .grief-badge-build    { background: #2d6a2d; color: #6fcf6f; }
@@ -266,6 +275,7 @@ HTML = """
   <button class="tab-btn" data-tab="briefs" onclick="setTab('briefs')">Design Briefs</button>
 </div>
 <div class="filters" id="filter-bar"></div>
+<div class="filters" id="category-filter-bar" style="display:none"></div>
 <main>
   <div id="post-list"></div>
   <!-- Design Briefs panel (shown when briefs tab is active) -->
@@ -283,9 +293,18 @@ HTML = """
 </main>
 
 <script>
-let allItems     = [];
-let currentFilter = 'pending';
-let currentTab    = 'listener';
+let allItems      = [];
+let currentFilter   = 'pending';
+let currentTab      = 'listener';
+let currentCategory = '';   // '' = all categories
+
+const CATEGORY_LABELS = {
+  '':           'All',
+  'bar':        'Dive Bar',
+  'venue':      'Music Venue',
+  'restaurant': 'Restaurant',
+  'rink':       'Roller Rink / Bowling',
+};
 
 // Filter configs per tab
 const FILTERS = {
@@ -313,8 +332,29 @@ function renderFilters() {
   ).join('');
 }
 
+function renderCategoryFilters() {
+  const bar = document.getElementById('category-filter-bar');
+  if (!bar) return;
+  if (currentTab !== 'bar_scout') { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  const cats = ['', 'bar', 'venue', 'restaurant', 'rink'];
+  bar.innerHTML = '<span style="font-size:11px;color:#7a6e60;margin-right:6px">Category:</span>' +
+    cats.map(c =>
+      `<button class="filter-btn${currentCategory === c ? ' active' : ''}"
+               onclick="setCategory('${c}')">${CATEGORY_LABELS[c]}</button>`
+    ).join('');
+}
+
+function setCategory(cat) {
+  currentCategory = cat;
+  renderCategoryFilters();
+  load();
+}
+
 async function load() {
-  const r  = await fetch('/api/items?tab=' + currentTab);
+  let url = '/api/items?tab=' + currentTab;
+  if (currentTab === 'bar_scout' && currentCategory) url += '&category=' + currentCategory;
+  const r  = await fetch(url);
   allItems = await r.json();
   updateCounts();
   render();
@@ -354,8 +394,10 @@ function setTab(t) {
     return;
   }
 
+  currentCategory = '';
   currentFilter = t === 'bar_scout' ? 'discovered' : 'pending';
   renderFilters();
+  renderCategoryFilters();
   load();
 }
 
@@ -575,10 +617,14 @@ function renderCandidateCard(item) {
   const isReviewed = item.status !== 'discovered';
   const date       = (item.discovered_at || '').slice(0, 10);
 
+  const catKey   = item.category || 'bar';
+  const catLabel = CATEGORY_LABELS[catKey] || catKey;
+
   return `
   <div class="post-card ${isReviewed ? item.status : ''}" id="card-${item.id}">
     <div class="post-head">
       <span class="score-badge ${badgeClass}">${score}/100</span>
+      <span class="cat-badge cat-${catKey}">${catLabel}</span>
       <div style="flex:1">
         <div class="post-title">${esc(item.name)} <span style="color:#7a6e60;font-size:12px;font-weight:400">— ${esc(item.city)}${item.state ? ', '+esc(item.state) : ''}</span></div>
         <div class="post-meta">
@@ -675,6 +721,7 @@ document.getElementById('graduate-modal').addEventListener('click', function(e) 
 
 // Initialize
 renderFilters();
+renderCategoryFilters();
 load();
 </script>
 </body>
@@ -711,8 +758,17 @@ def api_items():
         return jsonify(rows)
 
     if tab == "bar_scout":
+        category = request.args.get("category", "")
         with get_conn() as conn:
-            rows = fetchall(conn, "SELECT * FROM bar_candidates ORDER BY grief_score DESC, discovered_at DESC")
+            if category:
+                rows = fetchall(conn,
+                    "SELECT * FROM bar_candidates WHERE category=? ORDER BY grief_score DESC, discovered_at DESC",
+                    (category,),
+                )
+            else:
+                rows = fetchall(conn,
+                    "SELECT * FROM bar_candidates ORDER BY grief_score DESC, discovered_at DESC"
+                )
         return jsonify(rows)
 
     return jsonify([])
@@ -772,7 +828,12 @@ def api_graduate():
         )
 
     # Build a Python snippet ready to paste into shared/bars.py BARS list
+    cat        = row.get("category") or "bar"
+    cat_labels = {"bar": "Dive Bar", "venue": "Music Venue",
+                  "restaurant": "Restaurant", "rink": "Roller Rink / Bowling"}
+    cat_label  = cat_labels.get(cat, cat)
     snippet = (
+        f"    # Category: {cat_label}\n"
         "    {\n"
         f"        \"name\": {json.dumps(row['name'])},\n"
         f"        \"city\": {json.dumps(row['city'] or '')},\n"

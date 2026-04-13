@@ -71,3 +71,32 @@ def fetchone(conn, sql: str, params: tuple = ()) -> dict | None:
     cur = execute(conn, sql, params)
     row = cur.fetchone()
     return dict(row) if row else None
+
+
+def run_migrations():
+    """
+    Idempotent schema migrations. Safe to call at every startup.
+    Adds columns that may not exist on older installs.
+    ALTER TABLE ... ADD COLUMN is not IF-NOT-EXISTS compatible across SQLite
+    and PostgreSQL, so we wrap each in try/except and ignore
+    duplicate-column errors.
+    """
+    migrations = [
+        "ALTER TABLE bar_candidates ADD COLUMN category TEXT DEFAULT 'bar'",
+        "ALTER TABLE posts ADD COLUMN category TEXT DEFAULT 'bar'",
+    ]
+    with get_conn() as conn:
+        for sql in migrations:
+            try:
+                execute(conn, sql)
+            except Exception as e:
+                msg = str(e).lower()
+                if (
+                    "duplicate column" in msg      # SQLite: column already exists
+                    or "already exists" in msg     # PostgreSQL: column already exists
+                    or "no such table" in msg      # fresh local install, table not yet created
+                    or "does not exist" in msg     # PostgreSQL: table not yet created
+                ):
+                    pass
+                else:
+                    raise
